@@ -1,4 +1,4 @@
-# Micron Instruction Set
+# Skyarch Instruction Set
 
 ## Gen Design
 

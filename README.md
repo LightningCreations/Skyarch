@@ -1,4 +1,4 @@
-# Micron Specification
+# Skyarch ISA Specification
 
 
 ## Required Tools
