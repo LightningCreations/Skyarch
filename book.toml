@@ -20,9 +20,9 @@ include = []
 [output.html]
 
 
-[output.epub-fancy]
-optional = true
-output = ["part", "full"]
-always-include = ["COPYRIGHT.md", "COPYRIGHT-STUB.md"]
+# [output.epub-fancy]
+# optional = true
+# output = ["part", "full"]
+# always-include = ["COPYRIGHT.md", "COPYRIGHT-STUB.md"]
 
-[output.epub-fancy.file-ids]
+# [output.epub-fancy.file-ids]

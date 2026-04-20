@@ -6,6 +6,10 @@
 
 - [Instruction Set](./instruction-set.md)
 
+# Standard Co-processors
+
+- [Cryptographic Instructions](./crypto.md)
+
 # Toolchain Documents
 
 - [psABI](./psabi.md)

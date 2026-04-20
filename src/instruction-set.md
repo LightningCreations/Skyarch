@@ -104,7 +104,7 @@ The first 16 interrupt entries are reserved for hardware exceptions, these inter
 * Entry `1`: Bus Fault - accessing memory in a particular manner causes an error, or attempts to access memory that doesn't exist.
 * Entry `2`: Invalid Instruction - An instruction that is executed is an unknown opcode, reserved, malformed, or invalid
 * Entry `3`: Unaligned Branch Target - an indirect branch is unaligned.
-* Entry `4`: Consistency - An invalid system control register was loaded from memory, or an invalid value was written to a system register.
+* Entry `4`: Consistency - An invalid system control structure was loaded from memory, or an invalid value was written to a system register.
 * Entry `7`: Non-maskable Interrupt - May be raised in response to a priority signal external to the processor that requires immediate resolution. This is handled like an IRQ, but does not obey the `i` flag. 
 * Entries `8`-`15`: Co-processor Unit `n` Error - The corresponding Coprocessor unit `n` signals an error after a `CPIn` instruction (`n` is Exception number - 4).
 * Entries `5`, `6`, and `16`-`31` are reserved.
@@ -309,7 +309,7 @@ instruction ST(s: u5, d: u5, w: u2, p: bool):
         addr = ReadRegister(0,d) - width;
         WriteRegister(0,d, addr);
     else:
-        addr = ReadRegoster(0,d);
+        addr = ReadRegister(0,d);
 
     WriteAlignedMemoryTruncate(addr, val, width);
     
@@ -407,17 +407,18 @@ instruction {ADD, SUB, AND, OR, XOR}(a: u5, b: u5, d: u5, c: bool, s: u5, p: boo
 
 ```
 
-### Butterfly Shifts
+### Funnel Shifts
 
 | Mnemonic | Opcode | Payload                    |
 | -------- | ------ | -------------------------- |
 |          | `0--7` | `8---------------------31` |
-| `BSL`    | `0x0E` | `dddddvvvvvqqqqqcx0wrrrrr` |
-| `BSR`    | `0x0F` | `dddddvvvvvqqqqqcx0wrrrrr` |
+| `FSL`    | `0x0E` | `dddddvvvvvqqqqqcx0wrrrrr` |
+| `FSR`    | `0x0F` | `dddddvvvvvqqqqqcx0wrrrrr` |
 
 Timing: 3
 
 Payload Bits Legend:
+
 * `d`: Destination Register
 * `v`: Input Value
 * `q`: Shift Quantity
@@ -426,8 +427,37 @@ Payload Bits Legend:
 * `r`: Shift Remainder (Input value)
 * `x`: Invert by Sign
 
+Behaviour: Shifts `v` by `q` and places the value in `d`, filling the shifted in bits with bits taken from the corresponding high bits of `r`.
 
-Behaviour: Shifts `v` by `q` and places the value in 
+```
+instruction FSL(d: u5, v: u5, q: u5, c: bool, x: bool, w: bool, r: u5):
+    let val = ReadRegister(0, v);
+    let quantity = ReadRegister(0, q);
+    let remainder = ReadRegister(0, r);
+    if x & SignBitOf(val):
+        remainder = ~remainder;
+    
+    if w:
+        quantity = quantity & 31;
+    
+
+    let result = ShiftInLeft(val, remainder, quantity);
+    WriteRegister(0, d);
+
+instruction FSR(d: u5, v: u5, q: u5, c: bool, x: bool, w: bool, r: u5):
+    let val = ReadRegister(0, v);
+    let quantity = ReadRegister(0, q);
+    let remainder = ReadRegister(0, r);
+    if x & SignBitOf(val):
+        remainder = ~remainder;
+    
+    if w:
+        quantity = quantity & 31;
+    
+
+    let result = ShiftInRight(val, remainder, quantity);
+    WriteRegister(0, d);
+```
 
 
 ### Branches
@@ -544,6 +574,7 @@ function CheckCondition(flags: u32, cc: ConditionCode) is bool:
 | `OUT`    | `0x15` | `ssssspppppppp000000wwwww` |
 
 Payload Bits Legend:
+
 * s: Source Transfer Register
 * d: Destination Transfer Register
 * w: Transfer Bit Width
@@ -552,20 +583,22 @@ Payload Bits Legend:
 Timing: 7 + Port Delay
 
 Behaviour: Shift `w` bits in an io transfer register in or out to an I/O Port
+
 * `IN` : Shifts bits into the high bits of the transfer register
 * `OUT`: Shifts bits out of the low bits of the transfer register
 
 ```
 instruction IN(s: u5, p: u8, w: u5):
     let val = RotateRight(ReadBitsFromPort(p,w),w);
-    let regval = ReadRegister(2,s) >> w;
-    WriteRegister(2,s, val | regval);
+    let regval = ReadRegister(2, s);
+    let resval, bitsout = ShiftRightInOut(regval, val, w);
+    WriteRegister(2,s, resval);
 
 instruction OUT(s: u5, p: u8, w: u5):
-    let regval = ReadRegister(2,s);
-    let val = regval & ((1 <<w)-1);
-    WriteRegister(2, s, regval >> w);
-    WriteBitsToPort(val, p, w);
+    let regval = ReadRegister(2, s);
+    let resval, bitsout = ShiftRightInOut(regval, 0, w);
+    WriteRegister(2,s, resval);
+    WriteBitsToPort(p, w, bitsout);
 ```
 
 ### Flags Manipulation
