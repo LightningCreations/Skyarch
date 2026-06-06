@@ -20,7 +20,7 @@
 | `intptr_t`   | 4       |
 | `size_t`     | 4       |
 | `intmax_t`   | 8       |
-| `wchar_t`    | 2       |
+| `wchar_t`    | 4       |
 
 [^1]: Referred to as `_Bool` in C since C99 until C23.
 
@@ -30,7 +30,7 @@
 
 ### Primitive Alignment
 
-The Size and alignment of `align_max_t` are both 4. Each primitive less than or equal to 4 bytes in size is aligned to its size, rounded up to the next power of two bytes. 
+The Size and alignment of `align_max_t` are both 4. Each primitive less than or equal to 4 bytes in size is aligned to its size, rounded up to the next power of two bytes.
 Each primitive that is greater than 4 bytes in size are aligned to 4 bytes. This includes `_BitInt(N)` types.
 
 ### Floating Point Formats
@@ -125,7 +125,18 @@ The following OSABI values are defined
 | OSABI | Constant          | Description         |
 |-------|-------------------|---------------------|
 | `0-63`| Multiple          | See gABI OSABI list |
+| `240` | `OSABILOPRIV`     | Lowest value of Private Use Area |
+| `253` | `OSABIHIPRIV`     | Highest value of the Private Use Area |
+| `254` | `OSABIEXT`        | Reserved for OSABI extension |
 | `255` | `OSABISTANDALONE` | Standalone/Freestanding target |
+
+`OSABISTANDALONE` may be used by any program that conforms with this ABI and does not use a host operating system. The OS-specific ranges are unspecified.
+An object file that conforms to this ABI may not use any value in `*_LOOS` through `*_HIOS` for the respective fields in the ELF file.
+
+`OSABIEXT` is reserved for future use for an extension of the `EI_OSABI` field.
+
+The values between `OSABILOPRIV` and `OSABIHIPRIV` are reserved for private use. Object files and toolchains may use these constants for any purpose. Such object files and toolchains should not be considered portable and may not be arbitrarily combined.
+
 
 ### Relocations
 
