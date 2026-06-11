@@ -193,6 +193,17 @@ The nth bit is set to 1 if the nth coprocessor is present. Note that it is not g
 
 Co-processors connected to the system may expose up to 32 registers each. Registers in map `N` are only defined if the coprocessor co-processor (Co-processor N-8) is enabled.
 
+### Reset State
+
+On Reset (either hardware initiated, or initiated by an exception raised in an abort status), the CPU is initialized to the following state:
+
+* It is executing (Status = 0)
+* `IP` is initialized to 0xFF00.
+* `cpe` is set to `0`.
+* `ictl` is set to `m=0, a=0`
+
+All other registers, including `flags`, have undefined values.
+
 ## Instructions
 
 ### Undefined Instructions
@@ -235,7 +246,7 @@ instruction PAUSE(k: u6):
     SuspendForClockTicks(k)
 ```
 
-### Move 
+### Move
 
 | Mnemonic | Opcode | Payload                    |
 | -------- | ------ | -------------------------- |
@@ -401,9 +412,9 @@ Behaviour: Adds a 12-bit zero or sign-extended immediate to `d`.
 |          | `0--7` | `8---------------------31` |
 | `ADD`    | `0x09` | `dddddaaaaabbbbbcsssssp00` |
 | `SUB`    | `0x0A` | `dddddaaaaabbbbbcsssssp00` |
-| `AND`    | `0x0B` | `dddddaaaaabbbbbcsssssp00` |
-| `OR`     | `0x0C` | `dddddaaaaabbbbbcsssssp00` |
-| `XOR`    | `0x0D` | `dddddaaaaabbbbbcsssssp00` |
+| `AND`    | `0x0B` | `dddddaaaaabbbbbcssssspii` |
+| `OR`     | `0x0C` | `dddddaaaaabbbbbcssssspii` |
+| `XOR`    | `0x0D` | `dddddaaaaabbbbbcssssspii` |
 
 Timing: 2
 
@@ -414,10 +425,12 @@ Payload Bits Legend:
 * `c`: Suppress Condition
 * `p`: Shift Polarity
 * `s`: Shift Quantity
+* `i`: Invert input
 
 Behaviour:
+
 ```
-instruction {ADD, SUB, AND, OR, XOR}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool):
+instruction {ADD, SUB}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool):
     let src1, src2: u32;
     if p:
         src1 = ReadRegister(0, a) << s;
@@ -434,22 +447,49 @@ instruction {ADD, SUB, AND, OR, XOR}(a: u5, b: u5, d: u5, c: bool, s: u5, p: boo
         case SUB:
             dest, flags_val = src1 - src2;
             flags_mask = 0xF;
+    if not c:
+        SetFlagsRegisterByMask(flags_mask, flags_val);
+
+instruction {AND, OR, XOR}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool, i: u2):
+    let src1, src2: u32;
+    if p:
+        src1 = ReadRegister(0, a) << s;
+        src2 = ReadRegister(0,b);
+    else:
+        src1 = ReadRegister(0, a);
+        src2 = ReadRegister(0,b) << s;
+
+    let val1, val2: u32;
+
+    if i&0b1:
+        val1 = ~src1;
+    else:
+        val1 = src1;
+
+    if i&0b10:
+        val2 = ~src2;
+    else:
+        val2 = src2;
+    
+    let dest: u32;
+    let flags_val, flags_mask: u4;
+    switch (instruction):
         case AND:
-            dest = src1 & src2;
+            dest = val1 & val2;
             flags_val = LogicCondition(dest);
             flags_mask = 0x3;
         case OR:
-            dest = src1 | src2;
+            dest = val1 | val2;
             flags_val = LogicCondition(dest);
             flags_mask = 0x3;
         case XOR:
-            dest = src1 ^ src2;
+            dest = val1 ^ val2;
             flags_val = LogicCondition(dest);
             flags_mask = 0x3;
     if not c:
         SetFlagsRegisterByMask(flags_mask, flags_val);
-
 ```
+
 
 ### Funnel Shifts
 
@@ -652,6 +692,7 @@ instruction OUT(s: u5, p: u8, w: u5):
 |          | `0--7`   | `8---------------------31` |
 | `LDFLAGS`| `0x18`   | `ddddd0000000000000000000` |
 | `STFLAGS`| `0x19`   | `sssss0000000000000000000` |
+| `XVP`    | `0x1A`   | `000000000000000000000000` |
 
 
 Payload Bits Legend:
@@ -663,6 +704,7 @@ Timing: 1
 Behaviour:
 * `LDFLAGS` loads the flags bits into the lower 5 bits of `d` (zero extended)
 * `STFLAGS` stores the lower 5 bits of `s` into the flags bits
+* `XVP` exchanges the v and p flags
 
 The Flags Bits are:
 
@@ -684,6 +726,66 @@ instruction LDFL(d: u5):
 instruction STFL(s: u5)
     let val = ReadRegister(0, s);
     flags = val & 0xF;
+
+instruct XVP():
+    let temp = flags.p;
+    flags.p = flags.v;
+    flags.v = temp;
+```
+
+### Exchange Register Contents
+
+| Mnemonic | Opcode   | Payload                    |
+| -------- | -------- | -------------------------- |
+|          | `0--7`   | `8---------------------31` |
+| `XCHG`   | `0x1C`   | `aaaaabbbbb00lcccc0000000` |
+
+Payload Bits Legend:
+* `a`: Register 1
+* `s`: Register 2
+* `c`: Condition Code (See Jump)
+* `l`: Latency Control
+
+Exchanges GPR values `a` and `b`, if the condition check succeeds.
+
+```
+instruction XCHG(a: u5, b: u5, l: bool, c: ConditionCode):
+    let val1 = ReadRegister(0, a);
+    let val2 = ReadRegister(0, b);
+    if CheckCondtion(flags, c):
+        WriteRegister(0, a, val2);
+        WriteRegister(0, b, val1);
+```
+
+### Extend Register Contents
+
+| Mnemonic | Opcode   | Payload                    |
+| -------- | -------- | -------------------------- |
+|          | `0--7`   | `8---------------------31` |
+| `EXT`    | `0x1D`   | `dddddsssssx00000000wwwww` |
+
+Payload Bits Legend:
+* `d`: Destination
+* `s`: Source
+* `x`: Extend Kind (sign/zero)
+* `w`: Value width
+
+Masks only the lower `w` bits of a register, and extends it according to `x`
+
+```
+enum ExtKind:
+    Sign = 0,
+    Zero = 1
+
+instruction EXT(dest: u5, src: u5, x: ExtKind, w: u5):
+    let val = ReadRegister(0, src) & (1 << w)-1;
+    let res: u32;
+    switch(x):
+        case Sign:
+            res = SignExtend(val, w);
+        case Zero:
+            res = val;
+    WriteRegister(0, dest, res);
 ```
 
 ### Invoke Coprocessor Unit

@@ -180,6 +180,7 @@ Each Chart has the following information:
 | Mnemonic | Operands                       | Opcode | Special Payload Encoding  | Canonical |
 |----------|--------------------------------|--------|---------------------------|-----------|
 | `ADDI`   | `GPR <d>, SIMM16 <i>`          | `0x08` | `s=1,c=0,h=0`             | Yes       |
+| `ADDIC`  | `GPR <d>, SIMM16 <i>`          | `0x08` | `s=1,c=1,h=0`             | Yes       |
 | `ADDIU`  | `GPR <d>, UIMM16 <i>`          | `0x08` | `s=0,c=0,h=0`             | Yes       |
 | `ADDIH`  | `GPR <d>, UIMM16 <i>`          | `0x08` | `s=0,c=0,h=1`             | Yes       |
 | `ADDIH`  | `GPR <d>, SIMM16 <i>`          | `0x08` | `s=0,c=0,h=1`             | No        |
