@@ -913,19 +913,4 @@ instruction STOP() {
 }
 ```
 
-## Initial State
-
-### Execution Address
-
-The CPU begins executing from address 0xFF00.
-
-### Register Contents
-
-* GPR, I/O Transfer, and Coprocessor Registers are undefined
-* System Registers are set according to the following:
-   * `sysctl`: All bits 0
-   * `copctl`: P bits set according to which Coprocessors are connected. Other bits are 0
-   * `inttab`: 0
-   * `intret`: Undefined
-
 !{#copyright}
