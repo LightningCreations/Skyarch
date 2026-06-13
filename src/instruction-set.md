@@ -100,8 +100,28 @@ An interrupt/trap is blocked when the priority level is less than `m`. The behav
 * Asynchronous Events are discarded
 * IRQs are buffered (up to an implementation-specific capacity until an `intret` occurs that sets `m` to be `3`) or are discarded.
 
+#### Interrupt Return Registers
 
-#### Interrupt/Exception Table (Map 1, Register 3)
+Each priority of interrupt (other than priority 0) has a distinct return register, labeled `intret`*`n`* where *n* is the priority value, which corresponds to Register *n* in map 1. Aborts are not recoverable, so no return register is provided. 
+
+Format:
+```
++0-----------------------------31+
+|mmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++--------------------------------+
+```
+
+| Bits | Name          | Description                                     |
+| ---- | ------------- | ----------------------------------------------- |
+| `m`  | Priority Mask | Stores the priority mask before the interrupt   |
+| `a`  | Address       | Contains the high 30 bits of the return address |
+
+#### Interrupt Scratch/Config Registers
+
+Registers 4 through 11 in Map 1 are unused, freely writable registers, labeled `ints`*`n`* for registers 4+n and `intd`*`n`* for registers 8+n. 
+The register `ints`*`n`* is intended for use as a scratch register for interrupts with priority `n` (used during the interrupt procedure) and  `intd`*`n`* i intended for use as a data/configuration register for such interrupts (written by the program and read during each interrupt invocation).
+
+#### Interrupt/Exception Table (Map 1, Register 31)
 
 Format:
 ```
@@ -551,12 +571,14 @@ instruction FSR(d: u5, v: u5, q: u5, c: bool, x: bool, w: bool, r: u5):
 |          | `0--7` | `8---------------------31` |
 | `JMP`    | `0x10` | `cccclllllooooooooooooooo` |
 | `JMPR`   | `0x11` | `cccclllllrrrrr0000000000` |
+| `IRET`   | `0x12` | `pp0000000000000000000000` |
 
 Payload Bits Legend:
 * `c`: Condition Code
 * `l`: Link Register
 * `o`: Destination Offset (Bits 2..17)
 * `r`: Destination Register
+* `p`: Target Interrupt Priority
 
 Timing: `2+t+l+r` where:
 * `t` is `1` if the branch is taken and `0` if it is not taken
@@ -567,7 +589,7 @@ Behaviour: Jumps to the destination, if the condition is satisfied, saving the r
 
 * `JMP`: The offset is `IP + o * 4` where `o` is a signed offset. `IP` is the same as the return address and points to the beginning of the next instruction
 * `JMPR`: The offset is read from `r`
-
+* `IRET`: The offset it read from register `p` (p!=0) in Map 1. `intctl.m` is also loaded from `p.m` and `intctl.a` is cleared
 
 ```
 instruction JMP(c: ConditionCode, l: u5, o: u15):
@@ -587,6 +609,15 @@ instruction JMPR(c: ConditionCode, l: u5, r: u5):
         if l != 0:
             WriteRegister(0,l, curr_ip);
         IP = addr;
+
+instruction IRET(p: u2):
+    if p == 0:
+        Raise(Ex[2]);
+    let reg = p as u5;
+    let val = ReadRegister(1, reg);
+    let addr = val & !3;
+    IP = addr;
+    WriteRegister(1, 0, val & 3);
 ```
 
 #### Condition Code
