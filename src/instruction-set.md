@@ -819,6 +819,31 @@ instruction EXT(dest: u5, src: u5, x: ExtKind, w: u5):
     WriteRegister(0, dest, res);
 ```
 
+### Random Bits
+
+| Mnemonic | Opcode   | Payload                    |
+| -------- | -------- | -------------------------- |
+|          | `0--7`   | `8---------------------31` |
+| `RBGEN`  | `0x1E`   | `dddddeeeee000000000wwwww` |
+
+Payload Bits Legend:
+* `d`: Destination
+* `e`: Status Destination
+* `w`: Poll width
+
+```
+instruction RBGEN(d: u5, e: u5, w: u5):
+    let valid, result, status = PollRand(w);
+    WriteRegister(0, e, status);
+    if valid:
+        WriteRegister(0, d, result);
+        flags.z = 0;
+    else:
+        WriteRegister(0, d, 0);
+        flags.z = 1;
+```
+
+
 ### Invoke Coprocessor Unit
 
 | Mnemonic | Opcode   | Payload                    |
