@@ -850,6 +850,30 @@ instruction RBGEN(d: u5, e: u5, w: u5):
         flags.z = 1;
 ```
 
+Status format:
+```
++--------------------------------+
+|eeeeeeeeeeeeeeeess0000000000000r|
++--------------------------------+
+```
+
+| Bit  | Name               | Description                                       |
+|------|--------------------|---------------------------------------------------|
+| `e`  | Enthropy Available | Total ratio of enthropy available (*2^16)         |
+| `s`  | Status Code        | Status code (See Below)                           |
+| `r`  | Repeatable         | If set to 1, operation may be retried immediately | 
+
+
+The following status code values are used
+
+| Status Code | Name      | Description                                                        |
+|-------------|-----------|---------------------------------------|
+| 0           | `NORMAL`  | Normal status/spurious failure        |
+| 1           | `UNAVAIL` | Required minimum enthropy unavailable |
+| 2           | `PAUSE`   | Generator Paused/Errored (Recoverable)|
+| 3           | `FAULT`   | Unrecoverable Generator Error         |
+
+The CPU shall ensure that it automatically attempts a reset of the Random Bit Generator after reporting a PAUSE status in finite time. In the case of a FAULT status, the Generator is only reset after a RESET.
 
 ### Invoke Coprocessor Unit
 
