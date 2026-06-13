@@ -831,9 +831,16 @@ Payload Bits Legend:
 * `e`: Status Destination
 * `w`: Poll width
 
+Behaviour: Polls a hardware random bit generator. If successful, writes `w+1` random bits to `d` and clears `flags.z`. If unsuccesful, writes `0` to `d` and sets `flags.z`. In all cases, the current status of the RBG is stored to `e`. (TODO: Write out status format).
+
+The Random Bit Generator polled by the instruction shall have at least the following properties:
+* Each complete output from the instruction is independant from all previous outputs
+* Each output from the instruction is distinct from all other outputs, with `2^-((w+1)/2)` probability of collision.
+* If this instruction is used to generate at least 128 bits of randomness, which is then processed by a Cryptographic Hash Function, the resulting output shall have at least 64 bits of enthropy.
+
 ```
 instruction RBGEN(d: u5, e: u5, w: u5):
-    let valid, result, status = PollRand(w);
+    let valid, result, status = PollRand(w+1);
     WriteRegister(0, e, status);
     if valid:
         WriteRegister(0, d, result);
