@@ -15,7 +15,8 @@ The following operand syntax types are used in instructions
 | `UIMM16`| Immediate (unsigned 16-bit) | 16-bit Immediate operand      |
 | `SIMM16`| Immediate (signed 16-bit) | 16-bit Immediate operand        |
 |`PCREL16`| PC Relative Address (16-bit) | 16-bit offset from IP in bytes|
-| `OFF20` | Jump Offset (signed 20-bit) | 20-bit jump offset in words   |
+|`PCREL32`| PC Relative Address (32-bit) | 32-bit offset from IP in bytes|
+| `OFF17` | Jump Offset (signed 20-bit) | 20-bit jump offset in words   |
 | `UIMM32`| Immediate (unsigned 32-bit) | 32-bit immediate operand      |
 | `SIMM32`| Immediate (signed 32-bit) | 32-bit immediate operand        |
 | `BITW`  | Bit Width        | Width of a value in bits                 |
@@ -198,20 +199,24 @@ Each Chart has the following information:
 | `PUSH`   | `GPR <s>`                      | `0x04` | `p=1,w=4,d=30`            | No        |
 | `POP`    | `GPR <d>`                      | `0x03` | `p=1,w=4,d=30`            | No        |
 
-### `ADDI`
+### Load/Add Immediates
 
 | Mnemonic | Operands                       | Opcode | Special Payload Encoding  | Canonical |
 |----------|--------------------------------|--------|---------------------------|-----------|
-| `ADDI`   | `GPR <d>, SIMM16 <i>`          | `0x08` | `s=1,f=1,h=0`             | Yes       |
-| `ADDIF`  | `GPR <d>, SIMM16 <i>`          | `0x08` | `s=1,f=0,h=0`             | Yes       |
-| `ADDIU`  | `GPR <d>, UIMM16 <i>`          | `0x08` | `s=0,f=1,h=0`             | Yes       |
-| `ADDIH`  | `GPR <d>, UIMM16 <i>`          | `0x08` | `s=0,f=1,h=1`             | Yes       |
-| `ADDIH`  | `GPR <d>, SIMM16 <i>`          | `0x08` | `s=0,f=1,h=1`             | No        |
-| `ADDIUF` | `GPR <d>, UIMM16 <i>`          | `0x08` | `s=0,f=0,h=0`             | Yes       |
-| `ADDIHF` | `GPR <d>, UIMM16 <i>`          | `0x08` | `s=0,f=0,h=1`             | Yes       |
-| `ADDIHF` | `GPR <d>, SIMM16 <i>`          | `0x08` | `s=0,f=0,h=1`             | No        |
-| `INC`    | `GPR <d>`                      | `0x08` | `s=0,f=1,h=0,i=1`         | No        |
-| `DEC`    | `GPR <d>`                      | `0x08` | `s=1,f=1,h=0,i=0xFFFF`    | No        |
+| `LDI`    | `GPR <d>, SIMM16 <i>`          | `0x05` | `x=1`                     | Yes       |
+| `LDIU`   | `GPR <d>, UIMM16 <i>`          | `0x05` | `x=0`                     | Yes       |
+| `LRA`    | `GPR <d>, PCREL16 <i>`         | `0x06` | `x=1`                     | Yes       |
+| `LRAU`   | `GPR <d>, UPCREL16 <i>`        | `0x06` | `x=0`                     | Yes       |
+| `ADDI`   | `GPR <d>, SIMM16 <i>`          | `0x08` | `x=1,f=1,h=0`             | Yes       |
+| `ADDIF`  | `GPR <d>, SIMM16 <i>`          | `0x08` | `x=1,f=0,h=0`             | Yes       |
+| `ADDIU`  | `GPR <d>, UIMM16 <i>`          | `0x08` | `x=0,f=1,h=0`             | Yes       |
+| `ADDIH`  | `GPR <d>, UIMM16 <i>`          | `0x08` | `x=0,f=1,h=1`             | Yes       |
+| `ADDIH`  | `GPR <d>, SIMM16 <i>`          | `0x08` | `x=0,f=1,h=1`             | No        |
+| `ADDIUF` | `GPR <d>, UIMM16 <i>`          | `0x08` | `x=0,f=0,h=0`             | Yes       |
+| `ADDIHF` | `GPR <d>, UIMM16 <i>`          | `0x08` | `x=0,f=0,h=1`             | Yes       |
+| `ADDIHF` | `GPR <d>, SIMM16 <i>`          | `0x08` | `x=0,f=0,h=1`             | No        |
+| `INC`    | `GPR <d>`                      | `0x08` | `x=0,f=1,h=0,i=1`         | No        |
+| `DEC`    | `GPR <d>`                      | `0x08` | `x=1,f=1,h=0,i=0xFFFF`    | No        |
 
 ### Arithmetic Ops
 
@@ -373,3 +378,68 @@ Each Chart has the following information:
 |----------|-----------------|--------|--------------------------|-----------|
 | `HLT`    | -               | `0x40` | -                        | Yes       |
 | `STP`    | -               | `0x41` | -                        | Yes       |
+
+## Psuedo-instructions
+
+Certain Menmonics assembly to a special sequence of instructions and to a link relaxation. These are expressed using macro assembly syntax, but are expected to be treated as intrinsics.
+
+### LDIW 
+
+```as
+.macro ldiw GPR <reg>, UIMM32 <val>
+    ; Emits R_SKYARCH_RELAX16_32 if `val` is a symbol
+    ldiu <reg>, <val>@LO
+    addih <reg>, <val>@HI
+.endmacro
+
+.macro ldiw GPR <reg>, SIMM32 <val>
+    ; Emits R_SKYARCH_RELAX16_32 if `val` is a symbol
+    ldiu <reg>, <val>@LO
+    addih <reg>, <val>@HI
+.endmacro
+```
+
+May be converted to either `ldi <reg>, <val>` if the value is known to be in range
+
+### LRAW
+
+Loads a wide relative address
+
+```as
+.macro lraw GPR <reg>, PCREL32 <val>
+    ; Emits R_SKYARCH_RELAX16_PC32 if `val` is a symbol
+    lrau <reg>, <val>@LO
+    addih <reg>, <val>@HI
+.endmacro
+```
+
+may be converted to `lra <reg>, val` if the value is known to be in range
+
+### JMPW/JLW/CALLW
+
+```as
+.macro jl<cc>w GPR <link>, PCREL32 <val>, GPR <scratch>=r15
+    ; Emits R_SKYARCH_RELAXJMPOFF_PC32 if `val` is a symbol
+    lraw <scratch>, <val>
+    jlr<cc> <link>, <scratch>
+.endmacro
+
+.macro jlw GPR <link>, PCREL32 <val>, GPR <scratch>=r15
+    jlaw <link>, <val>, <scratch>
+.endmacro
+
+.macro jmp<cc>w PCREL32 <val>, GPR <scratch>=r15
+    jl<cc>w r0, <val>, <scratch>
+.endmacro
+
+.macro jmpw PCREL32 <val>, GPR <scratch>=r15
+    jlw r0, <val>, <scratch>
+.endmacro
+
+.macro callw PCREL32, GPR <scratch>=r15
+    jlw r31, <val>, <scratch>
+.endmacro
+```
+
+May be converted to `jl<cc>` (as appropriate) if `val` is known to be in range.
+The value of `<scratch>` after the psuedo-instruction completes is unspecified (may not have been modified, or may be loaded with any value).

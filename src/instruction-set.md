@@ -413,13 +413,13 @@ instruction LRA(d: u5, x: bool, i: u15):
 | Mnemonic | Opcode | Payload                    |
 | -------- | ------ | -------------------------- |
 |          | `0--7` | `8---------------------31` |
-| `ADDI`   | `0x08` | `dddddsfhiiiiiiiiiiiiiiii` |
+| `ADDI`   | `0x08` | `dddddxfhiiiiiiiiiiiiiiii` |
 
 Timing: 2
 Payload Bits Legend:
 * `d`: Destination Register
 * `h`: High half
-* `s`: Extend Sign
+* `x`: Extend Sign
 * `f`: Surpress Flags Modification
 * `i`: Immediate
 
