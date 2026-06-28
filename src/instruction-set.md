@@ -430,8 +430,8 @@ Behaviour: Adds a 12-bit zero or sign-extended immediate to `d`.
 | Mnemonic | Opcode | Payload                    |
 | -------- | ------ | -------------------------- |
 |          | `0--7` | `8---------------------31` |
-| `ADD`    | `0x09` | `dddddaaaaabbbbbfsssssp00` |
-| `SUB`    | `0x0A` | `dddddaaaaabbbbbfsssssp00` |
+| `ADD`    | `0x09` | `dddddaaaaabbbbbfsssssp0c` |
+| `SUB`    | `0x0A` | `dddddaaaaabbbbbfsssssp0c` |
 | `AND`    | `0x0B` | `dddddaaaaabbbbbfssssspij` |
 | `OR`     | `0x0C` | `dddddaaaaabbbbbfssssspij` |
 | `XOR`    | `0x0D` | `dddddaaaaabbbbbfssssspij` |
@@ -443,6 +443,7 @@ Payload Bits Legend:
 * `b`: Source Register 2
 * `d`: Destination Register
 * `f`: Suppress Flags Modification
+* `c`: Carry in
 * `p`: Shift Polarity
 * `s`: Shift Quantity
 * `i`: Invert op 1
@@ -451,7 +452,7 @@ Payload Bits Legend:
 Behaviour:
 
 ```
-instruction {ADD, SUB}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool):
+instruction {ADD, SUB}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool, c: bool):
     let src1, src2: u32;
     if p:
         src1 = ReadRegister(0, a) << s;
@@ -463,10 +464,10 @@ instruction {ADD, SUB}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool):
     let flags_val, flags_mask: u4;
     switch (instruction):
         case ADD:
-            dest, flags_val = src1 + src2;
+            dest, flags_val = src1 + src2 + (flags.c & c);
             flags_mask = 0xF;
         case SUB:
-            dest, flags_val = src1 - src2;
+            dest, flags_val = src1 - src2 + (~flags.c & c);
             flags_mask = 0xF;
     if not c:
         SetFlagsRegisterByMask(flags_mask, flags_val);
