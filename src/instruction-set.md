@@ -413,14 +413,14 @@ instruction LRA(d: u5, x: bool, i: u15):
 | Mnemonic | Opcode | Payload                    |
 | -------- | ------ | -------------------------- |
 |          | `0--7` | `8---------------------31` |
-| `ADDI`   | `0x08` | `dddddschiiiiiiiiiiiiiiii` |
+| `ADDI`   | `0x08` | `dddddsfhiiiiiiiiiiiiiiii` |
 
 Timing: 2
 Payload Bits Legend:
 * `d`: Destination Register
 * `h`: High half
 * `s`: Extend Sign
-* `c`: Supress Flags Modification
+* `f`: Surpress Flags Modification
 * `i`: Immediate
 
 Behaviour: Adds a 12-bit zero or sign-extended immediate to `d`.
@@ -430,11 +430,11 @@ Behaviour: Adds a 12-bit zero or sign-extended immediate to `d`.
 | Mnemonic | Opcode | Payload                    |
 | -------- | ------ | -------------------------- |
 |          | `0--7` | `8---------------------31` |
-| `ADD`    | `0x09` | `dddddaaaaabbbbbcsssssp00` |
-| `SUB`    | `0x0A` | `dddddaaaaabbbbbcsssssp00` |
-| `AND`    | `0x0B` | `dddddaaaaabbbbbcssssspii` |
-| `OR`     | `0x0C` | `dddddaaaaabbbbbcssssspii` |
-| `XOR`    | `0x0D` | `dddddaaaaabbbbbcssssspii` |
+| `ADD`    | `0x09` | `dddddaaaaabbbbbfsssssp00` |
+| `SUB`    | `0x0A` | `dddddaaaaabbbbbfsssssp00` |
+| `AND`    | `0x0B` | `dddddaaaaabbbbbfssssspij` |
+| `OR`     | `0x0C` | `dddddaaaaabbbbbfssssspij` |
+| `XOR`    | `0x0D` | `dddddaaaaabbbbbfssssspij` |
 
 Timing: 2
 
@@ -442,10 +442,11 @@ Payload Bits Legend:
 * `a`: Source Register 1
 * `b`: Source Register 2
 * `d`: Destination Register
-* `c`: Suppress Condition
+* `f`: Suppress Flags Modification
 * `p`: Shift Polarity
 * `s`: Shift Quantity
-* `i`: Invert input
+* `i`: Invert op 1
+* `j`: Invert op 2
 
 Behaviour:
 
@@ -470,7 +471,7 @@ instruction {ADD, SUB}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool):
     if not c:
         SetFlagsRegisterByMask(flags_mask, flags_val);
 
-instruction {AND, OR, XOR}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool, i: u2):
+instruction {AND, OR, XOR}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool, i: bool, j: bool):
     let src1, src2: u32;
     if p:
         src1 = ReadRegister(0, a) << s;
@@ -481,12 +482,12 @@ instruction {AND, OR, XOR}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool, i: u2):
 
     let val1, val2: u32;
 
-    if i&0b1:
+    if i:
         val1 = ~src1;
     else:
         val1 = src1;
 
-    if i&0b10:
+    if j:
         val2 = ~src2;
     else:
         val2 = src2;
@@ -516,8 +517,8 @@ instruction {AND, OR, XOR}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool, i: u2):
 | Mnemonic | Opcode | Payload                    |
 | -------- | ------ | -------------------------- |
 |          | `0--7` | `8---------------------31` |
-| `FSL`    | `0x0E` | `dddddvvvvvqqqqqcx0wrrrrr` |
-| `FSR`    | `0x0F` | `dddddvvvvvqqqqqcx0wrrrrr` |
+| `FSL`    | `0x0E` | `dddddvvvvvqqqqqfx0wrrrrr` |
+| `FSR`    | `0x0F` | `dddddvvvvvqqqqqfx0wrrrrr` |
 
 Timing: 3
 
@@ -526,7 +527,7 @@ Payload Bits Legend:
 * `d`: Destination Register
 * `v`: Input Value
 * `q`: Shift Quantity
-* `c`: Suppress Condition
+* `f`: Suppress Flags Modification
 * `w`: Wrap Quantity
 * `r`: Shift Remainder (Input value)
 * `x`: Invert by Sign
@@ -697,23 +698,29 @@ Payload Bits Legend:
 
 Timing: 7 + Port Delay
 
-Behaviour: Shift `w` bits in an io transfer register in or out to an I/O Port
+Behaviour: Shift `w` (in `1..=32`, mod 32) bits in an io transfer register in or out to an I/O Port. w=0 = 32
 
 * `IN` : Shifts bits into the high bits of the transfer register
 * `OUT`: Shifts bits out of the low bits of the transfer register
 
 ```
 instruction IN(s: u5, p: u8, w: u5):
-    let val = RotateRight(ReadBitsFromPort(p,w),w);
+    let val = RotateRight(ReadBitsFromPort(p,w),ExtendWidth(w));
     let regval = ReadRegister(2, s);
-    let resval, bitsout = ShiftRightInOut(regval, val, w);
+    let resval, bitsout = ShiftRightInOut(regval, val, ExtendWidth(w));
     WriteRegister(2,s, resval);
 
 instruction OUT(s: u5, p: u8, w: u5):
     let regval = ReadRegister(2, s);
-    let resval, bitsout = ShiftRightInOut(regval, 0, w);
+    let resval, bitsout = ShiftRightInOut(regval, 0, ExtendWidth(w));
     WriteRegister(2,s, resval);
-    WriteBitsToPort(p, w, bitsout);
+    WriteBitsToPort(p, ExtendWidth(w), bitsout);
+
+function ExtendWidth(w: u5) is u6:
+    if w==0:
+        return 0x20;
+    else:
+        w;
 ```
 
 ### Flags Manipulation
@@ -721,20 +728,21 @@ instruction OUT(s: u5, p: u8, w: u5):
 | Mnemonic | Opcode   | Payload                    |
 | -------- | -------- | -------------------------- |
 |          | `0--7`   | `8---------------------31` |
-| `LDFLAGS`| `0x18`   | `ddddd0000000000000000000` |
-| `STFLAGS`| `0x19`   | `sssss0000000000000000000` |
+| `LDFLAGS`| `0x18`   | `dddddfffff00000000000000` |
+| `STFLAGS`| `0x19`   | `sssssfffff00000000000000` |
 | `XVP`    | `0x1A`   | `000000000000000000000000` |
 
 
 Payload Bits Legend:
 * s: Source Register
 * d: Destination Register
+* f: Flag modification mask
 
 Timing: 1
 
 Behaviour:
 * `LDFLAGS` loads the flags bits into the lower 5 bits of `d` (zero extended)
-* `STFLAGS` stores the lower 5 bits of `s` into the flags bits
+* `STFLAGS` stores the lower 5 bits of `s` into the flags bits, overwriting only flags set to 1 in `f`
 * `XVP` exchanges the v and p flags
 
 The Flags Bits are:
@@ -750,13 +758,13 @@ The Flags Bits are:
 * `p`: Parity
 
 ```
-instruction LDFL(d: u5):
-    let val = flags;
+instruction LDFL(d: u5, f: u5):
+    let val = ZeroExtend(flags & f);
     WriteRegister(0,d, val);
 
-instruction STFL(s: u5)
+instruction STFL(s: u5, f: u5)
     let val = ReadRegister(0, s);
-    flags = val & 0xF;
+    flags = (val & f) | (flags & ~f);
 
 instruct XVP():
     let temp = flags.p;
@@ -831,16 +839,16 @@ Payload Bits Legend:
 * `e`: Status Destination
 * `w`: Poll width
 
-Behaviour: Polls a hardware random bit generator. If successful, writes `w+1` random bits to `d` and clears `flags.z`. If unsuccesful, writes `0` to `d` and sets `flags.z`. In all cases, the current status of the RBG is stored to `e`. (TODO: Write out status format).
+Behaviour: Polls a hardware random bit generator. If successful, writes `w` (in `1..=32`, mod 32) random bits to `d` and clears `flags.z`. If unsuccesful, writes `0` to `d` and sets `flags.z`. In all cases, the current status of the RBG is stored to `e`. (TODO: Write out status format). Note that `flags.z` is only set depending on success/failure. In particular, a successful poll that results in all `0s` (Approximately a 2^-(w+1) chance) will still clear `flags.z`.
 
 The Random Bit Generator polled by the instruction shall have at least the following properties:
 * Each complete output from the instruction is independant from all previous outputs
-* Each output from the instruction is distinct from all other outputs, with `2^-((w+1)/2)` probability of collision.
+* Each output from the instruction is distinct from all other outputs, with `2^-((w)/2)` probability of collision.
 * If this instruction is used to generate at least 128 bits of randomness, which is then processed by a Cryptographic Hash Function, the resulting output shall have at least 64 bits of enthropy.
 
 ```
 instruction RBGEN(d: u5, e: u5, w: u5):
-    let valid, result, status = PollRand(w+1);
+    let valid, result, status = PollRand(ExtendWidth(w));
     WriteRegister(0, e, status);
     if valid:
         WriteRegister(0, d, result);
@@ -851,6 +859,7 @@ instruction RBGEN(d: u5, e: u5, w: u5):
 ```
 
 Status format:
+
 ```
 +--------------------------------+
 |eeeeeeeeeeeeeeeess0000000000000r|
@@ -861,12 +870,12 @@ Status format:
 |------|--------------------|---------------------------------------------------|
 | `e`  | Enthropy Available | Total ratio of enthropy available (*2^16)         |
 | `s`  | Status Code        | Status code (See Below)                           |
-| `r`  | Repeatable         | If set to 1, operation may be retried immediately | 
+| `r`  | Repeatable         | If set to 1, operation may be retried immediately |
 
 
 The following status code values are used
 
-| Status Code | Name      | Description                                                        |
+| Status Code | Name      | Description                           |
 |-------------|-----------|---------------------------------------|
 | 0           | `NORMAL`  | Normal status/spurious failure        |
 | 1           | `UNAVAIL` | Required minimum enthropy unavailable |

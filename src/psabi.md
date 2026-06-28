@@ -63,8 +63,8 @@ r1 and r2 are used to return values up to 8 bytes in size. Registers r1 through 
 | `r15`       | Special-Purpose Scratch Register | Caller Saved |
 | `r16`-`r27` | Callee Saved Register | Callee Saved |
 | `r28`-`r29` | Reserved Register | Callee Saved/Reserved |
-| `r30` | Stack Pointer | Callee Saved |
-| `r31` | Return Pointer | Callee Saved |
+| `r30`       | Stack Pointer | Callee Saved |
+| `r31`       | Return Pointer | Callee Saved |
 
 ### Stack, Link Register, Reserved Registers
 
@@ -74,7 +74,7 @@ r28 and r29 are not used by this ABI, but may be used by future versions or by i
 > [!NOTE]
 > It is recommended for r28 to be used as a Thread Pointer on a multicore system.
 
-r30 is reserved to be the stack pointer. Before entering a procedure, it must refer to a memory address which points to the end of a memory region that is available for the procedure to use to store its own variables and parameters. 
+r30 is reserved to be the stack pointer. Before entering a procedure, it must refer to a memory address which points to the end of a memory region that is available for the procedure to use to store its own variables and parameters.
 The Address must be aligned to 4 bytes, and must be mutable. 
 Additionally, the memory region immediately following the pointers may be required to hold parameters passed on the stack. The stack grows downwards, away from the end of the region allocated for the stack. Any region of memory between the address in r30 up to the end of the stack shall be preserved by compliant software, unless mutated via a pointer. All memory below the stack pointer in the allocated memory region may be freely clobbered at any point (including by an interrupt handler) and must not be relied upon in any particular value.
 
@@ -82,15 +82,17 @@ r31 is reserved to be the standard link register. Upon entry to any procedure, `
 
 > [!NOTE]
 > While r31 remains caller saved, every function call that isn't a tailcall will necessarily modify this register and require the register to be spilled to memory.
-> The exception is if the function does not expect to return.
+> The exception is if the function does not expect to return (but such functions may require this regardless, to support unwinding).
 
 ### Parameter Passing/Return Convention
 
 When passing or returning values, each value is classified as follows:
+
 * Primitive Values,
 * Non Trivial Aggregates
 
 Non-Trivial Aggregates are types with an alignment greater than 4, or a class type C++ with one of the following special member functions being non-trivial, and which is not *trivially relocatable*:
+
 * Copy or Move (Since C++11) Constructor,
 * Destructor.
 
@@ -106,9 +108,9 @@ If the return value is returned in memory, an implicit first parameter is insert
 
 A parameter passed in memory is replaced with a single 4 byte value passed directly, which points to the memory used to pass the value. 
 
-After replacement, values passed/returned directly are divided into up to 2 4-byte chunks. Any chunk which is not present or consists entirely of padding bytes is discarded when passing directly. Then, each chunk in parameter order (with least significant byte first) is passed by allocating the next available register in `r1-r10`. If any chunk of a parameter cannot be allocated a register, the entire value is pushed to the stack in Right to Left Order (with the Leftmost parameter occupying the least significant address). The most significant address of the parameter area is 4 byte aligned, and up to 3 bytes are inserted after the leftmost parameter to align the stack to 4 bytes. Padding is inserted between parameters to align each parameter to the smaller of their size rounded up to the next power of 2, and 4 bytes. Once the first parameter is passed on the stack, no further parameters are passed in registers.
+After replacement, values passed/returned directly are divided into up to 2 4-byte chunks. Any chunk which is not present or consists entirely of padding bytes is discarded when passing directly. Then, each chunk in parameter order (with least significant byte first) is passed by allocating the next available register in `r1-r10`. If any chunk of a parameter cannot be allocated a register, the entire value is pushed to the stack in Right to Left Order (with the Leftmost parameter occupying the least significant address). The most significant address of the parameter area is 4 byte aligned, and up to 3 bytes are inserted after the leftmost parameter to align the stack to 4 bytes. Padding is inserted between parameters to align each parameter to the smaller of their size rounded up to the next power of 2, and 4 bytes. Note that alignment requirements are not considered for this step (e.g. a `char[3]` array will get padded to 4 bytes) Once the first parameter is passed on the stack, no further parameters are passed in registers.
 
-Each returned chunk of the return value is returned in the first available register of `r1` and `r2`. 
+Each returned chunk of the return value is returned in the first available register of `r1` and `r2`.
 
 ## Floating point co-processor
 
@@ -135,30 +137,32 @@ An object file that conforms to this ABI may not use any value in `*_LOOS` throu
 
 `OSABIEXT` is reserved for future use for an extension of the `EI_OSABI` field.
 
-The values between `OSABILOPRIV` and `OSABIHIPRIV` are reserved for private use. Object files and toolchains may use these constants for any purpose. Such object files and toolchains should not be considered portable and may not be arbitrarily combined.
+The values between `OSABILOPRIV` and `OSABIHIPRIV` (inclusive) are reserved for private use. Object files and toolchains may use these constants for any purpose. Such object files and toolchains should not be considered portable and may not be arbitrarily combined.
 
 
 ### Relocations
 
-| Relocation Name | Relocation Number | Size    | Value | Description           |
-|-----------------|-------------------|---------|-------|-----------------------|
-|R_MICRON_NONE    | 0                 | 0 bits  | `0`   |Performs no Operation |
-|R_MICRON_32      | 1                 | 32 bits | `S`   | Relocates against an absolute 32-bit address |
-|R_MICRON_PC32    | 2                 | 32 bits | `S-IP`| Relocates against the 32-bit offset from the current address |
-|R_MICRON_LO16    | 3                 | 16 bits | `TRUNC(S)` | Relocates against the lower 16 bits of an absolute 32-bit address |
-|R_MICRON_PC16    | 4                 | 16 bits | `S-IP` |Relocates against the 16-bit offset from the current address |
-|R_MICRON_LOPC16  | 5                 | 16 bits | `TRUNC(S-IP)` | Relocates against the lower 16 bits of a 32-bit offset from the current address |
-|R_MICRON_HI16    | 6                 | 16 bits | `S>>16`  | Relocates against the upper 16-bits of an absolute 32-bit address |
-|R_MICRON_HIPC16  | 7                 | 16 bits | `(S-IP)>>16` | Relocates against the upper 16-bits of a 32-bit offset |
-|R_MICRON_JMPO    | 8                 | 16 bits | `(S-IP)>>2`  | Relocates against the aligned 17 bit offset suitable for a jump instruction, writing the top bits to the upper 15 bits of the word |
-|R_MICRON_RELAX16_PC32 | 32           | 64 bits  | N/A | Hints that a link editor or other tool may convert a pointed to code sequence that loads a 32-bit pc relative offset into one that loads a 16-bit pcrelative offset |
-|R_MICRON_RELAX16_32 | 33             | 64 bits | N/A | Hints that a link editor or other tool may convert a pointed-to code sequence that loads a 32-bit absolute address into one that loads a 16-bit absolute address, or a 16-bit offset|
-|R_MICRON_RELAXJMPOFF_PC32 | 34       | 96 bits | N/A | Hints that a link editor or other tool may convert a pointed-to code sequence that loads and jumps to a 32-bit pc relative address into one that performs a direct jump to a 17-bit aligned offset from the resulting instruction |
-| N/A           | 35-63               | 0 bits | N/A  | Reserved for future relaxation hints and must be ignored by link editors. Must not be generated by toolchains |
+| Relocation Name | Relocation Number | Size    | Validation | Value | Description           |
+|-----------------|-------------------|---------|------------|-------|-----------------------|
+|R_MICRON_NONE    | 0                 | 0 bits  | N/A        |`0`    |Performs no Operation |
+|R_MICRON_32      | 1                 | 32 bits | Unsigned   | `S`   | Relocates against an absolute 32-bit address |
+|R_MICRON_PC32    | 2                 | 32 bits | Signed     | `S-IP`| Relocates against the 32-bit offset from the current address |
+|R_MICRON_LO16    | 3                 | 16 bits | None       | `TRUNC(S)` | Relocates against the lower 16 bits of an absolute 32-bit address |
+|R_MICRON_PC16    | 4                 | 16 bits | Signed     | `S-IP` |Relocates against the 16-bit offset from the current address |
+|R_MICRON_LOPC16  | 5                 | 16 bits | None       |`TRUNC(S-IP)` | Relocates against the lower 16 bits of a 32-bit offset from the current address |
+|R_MICRON_HI16    | 6                 | 16 bits | Unsigned   | `S>>16`  | Relocates against the upper 16-bits of an absolute 32-bit address |
+|R_MICRON_HIPC16  | 7                 | 16 bits | Signed     | `(S-IP)>>16` | Relocates against the upper 16-bits of a 32-bit offset |
+|R_MICRON_JMPO    | 8                 | 16 bits | Signed     | `(S-IP)>>2`  | Relocates against the aligned 17 bit offset suitable for a jump instruction, writing the top bits to the upper 15 bits of the word |
+|R_MICRON_RELAX16_PC32 | 32           | 64 bits  | N/A       | N/A | Hints that a link editor or other tool may convert a pointed to code sequence that loads a 32-bit pc relative offset into one that loads a 16-bit pcrelative offset |
+|R_MICRON_RELAX16_32 | 33             | 64 bits | N/A       | N/A | Hints that a link editor or other tool may convert a pointed-to code sequence that loads a 32-bit absolute address into one that loads a 16-bit absolute address, or a 16-bit offset|
+|R_MICRON_RELAXJMPOFF_PC32 | 34       | 96 bits | N/A       | N/A | Hints that a link editor or other tool may convert a pointed-to code sequence that loads and jumps to a 32-bit pc relative address into one that performs a direct jump to a 17-bit aligned offset from the resulting instruction |
+| N/A           | 35-63               | 0 bits | N/A       | N/A  | Reserved for future relaxation hints and must be ignored by link editors. Must not be generated by toolchains |
 
-S: The Address of the symbol being relocated
 
-IP: The instruction pointer at the end of the relocation.
+Variables:
+
+* S: The Address of the symbol being relocated
+* IP: The instruction pointer at the end of the relocation.
 
 #### Link Relaxations
 
