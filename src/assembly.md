@@ -425,7 +425,7 @@ may be converted to `lra <reg>, val` if the value is known to be in range
 .endmacro
 
 .macro jlw GPR <link>, PCREL32 <val>, GPR <scratch>=r15
-    jlaw <link>, <val>, <scratch>
+    jlalw <link>, <val>, <scratch>
 .endmacro
 
 .macro jmp<cc>w PCREL32 <val>, GPR <scratch>=r15
