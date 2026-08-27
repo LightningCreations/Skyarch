@@ -70,7 +70,7 @@ Reading or Writing an undefined register causes `EX[2]`. Writing an invalid valu
 Format:
 ```
 +0-----------------------------31+
-|mm00000000000000000000000000000a|
+|mm00000000000000000000000000000r|
 +--------------------------------+
 ```
 
@@ -80,7 +80,7 @@ Format:
 | Bits | Name           | Description                                    |
 | ---- | -------------- | ---------------------------------------------- |
 | `m`  | Priority Mask  | Interrupts with priority value > m are blocked |
-| `a`  | Abort Triggered| Set to 1 when an Abort (Ex[0]) occurs.         |
+| `r`  | Abort Triggered| Set to 1 when an Abort (Ex[0]) occurs.         |
 
 Both fields are set to `0` on startup.
 
@@ -322,8 +322,8 @@ instruction MOV(d: u5, s: u5, m: u2, dir: u1, c: ConditionCode, l: bool):
 | Mnemonic | Opcode | Payload                    |
 | -------- | ------ | -------------------------- |
 |          | `0--7` | `8---------------------32` |
-| `ST`     | `0x03` | `dddddsssssww0000000000mm` |
-| `LD`     | `0x04` | `dddddsssssww0000000000mm` |
+| `ST`     | `0x03` | `dddddsssssww00000000mmrr` |
+| `LD`     | `0x04` | `dddddsssssww00000000mmrr` |
 | `LDI`    | `0x05` | `dddddx00iiiiiiiiiiiiiiii` |
 | `LRA`    | `0x06` | `dddddx00oooooooooooooooo` |
 
@@ -337,6 +337,7 @@ Payload Bits Legend:
 * `q`: Scale Quantity
 * `m`: Update mode
 * `x`: Sign/Zero Extend
+* `r`: Ordering
 
 Timing: 
 
@@ -351,13 +352,21 @@ Behaviour:
 
 ```
 
+enum Ordering:
+    Relaxed = 0,
+    Acquire = 1,
+    Release = 2,
+    SeqCst = 3,
+
 enum UpdateMode:
     None = 0,
     PostInc = 1,
     /* Illegal = 2 */,
     PreDec = 3,
 
-instruction ST(s: u5, d: u5, w: u2, m: UpdateMode):
+instruction ST(s: u5, d: u5, w: u2 r: Ordering, m: UpdateMode):
+    if r==1:
+        Raise(EX[2])
     if m == 2:
         Raise(EX[2])
     if d==0:
@@ -374,6 +383,7 @@ instruction ST(s: u5, d: u5, w: u2, m: UpdateMode):
     if addr & (width - 1):
         Raise(Ex[1])
 
+    SynchronizeMemoryAccordingToStore(r, addr);
     WriteAlignedMemoryTruncate(addr, val, width);
     let new_addr: u32;
     if m == 1:
@@ -383,6 +393,8 @@ instruction ST(s: u5, d: u5, w: u2, m: UpdateMode):
     
     
 instruction LD(s: u5, d: u5,w: u2, p: u2):
+    if r==2:
+        Raise(EX[2])
     if s==0:
         Raise(EX[2])
     let width = 2 << w;
@@ -396,6 +408,7 @@ instruction LD(s: u5, d: u5,w: u2, p: u2):
     if addr & (width - 1):
         Raise(Ex[1])
     let val = ReadAlignedMemoryZeroExtend(addr, w+1);
+    SynchronizeMemoryAccordingToLoad(r, addr);
     WriteRegister(0,d,val);
     let new_addr: u32;
     if m == 1:
@@ -403,7 +416,7 @@ instruction LD(s: u5, d: u5,w: u2, p: u2):
     if m != 0:
         WriteRegister(0, s, new_addr);
     
-instruction LRA(d: u5, x: bool, i: u15):
+instruction LRA(d: u5, x: bool, i: u16):
     let val = SignExtendOrZeroExtend(i, x) + IP;
     WriteRegister(0,d,val);
 ```
@@ -417,13 +430,35 @@ instruction LRA(d: u5, x: bool, i: u15):
 
 Timing: 2
 Payload Bits Legend:
+
 * `d`: Destination Register
 * `h`: High half
 * `x`: Extend Sign
-* `f`: Surpress Flags Modification
+* `f`: Enable Flags Modification
 * `i`: Immediate
 
+Flags: Sets `P`, `N`, and `Z` according to the result. Sets `V` and `C` according to the computation (signed overflow and carry)
+
 Behaviour: Adds a 12-bit zero or sign-extended immediate to `d`.
+
+```
+instruction ADDI(d: u5, x: bool, f: bool, h: bool, i: u16):
+    let imm: u32;
+    if h:
+        imm = ZeroExtend(i, 32) << 16;
+    else if x:
+        imm = SignExtend(i, 32);
+    else:
+        imm = ZeroExtend(i, 32);
+    let r = ReadRegister(0,d);
+
+    let result, flags_val = r + imm;
+
+    WriteRegister(0, d, result);
+    if f:
+        flags = flags_val;
+
+```
 
 ### ALU Instructions
 
@@ -442,17 +477,22 @@ Payload Bits Legend:
 * `a`: Source Register 1
 * `b`: Source Register 2
 * `d`: Destination Register
-* `f`: Suppress Flags Modification
+* `f`: Enable Flags Modification
 * `c`: Carry in
 * `p`: Shift Polarity
 * `s`: Shift Quantity
 * `i`: Invert op 1
 * `j`: Invert op 2
 
+Flags:
+
+* `ADD`/`SUB`: Sets `P`, `N`, and `Z` according to the result. Sets `V` and `C` according to the computation (signed overflow and carry)
+* `AND`/`OR`/`XOR`: Sets `P`, `N`, and `Z` according to the result. `V` and `C` are set to unspecified values.
+
 Behaviour:
 
 ```
-instruction {ADD, SUB}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool, c: bool):
+instruction {ADD, SUB}(a: u5, b: u5, d: u5, f: bool, s: u5, p: bool, c: bool):
     let src1, src2: u32;
     if p:
         src1 = ReadRegister(0, a) << s;
@@ -469,10 +509,10 @@ instruction {ADD, SUB}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool, c: bool):
         case SUB:
             dest, flags_val = src1 - src2 + (~flags.c & c);
             flags_mask = 0xF;
-    if not c:
-        SetFlagsRegisterByMask(flags_mask, flags_val);
+    if f:
+        flags = flags_val & flags_mask | nondeterministic() & ~flags_mask;
 
-instruction {AND, OR, XOR}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool, i: bool, j: bool):
+instruction {AND, OR, XOR}(a: u5, b: u5, d: u5, f: bool, s: u5, p: bool, i: bool, j: bool):
     let src1, src2: u32;
     if p:
         src1 = ReadRegister(0, a) << s;
@@ -494,7 +534,7 @@ instruction {AND, OR, XOR}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool, i: bool
         val2 = src2;
     
     let dest: u32;
-    let flags_val, flags_mask: u4;
+    let flags_val, flags_mask: u5;
     switch (instruction):
         case AND:
             dest = val1 & val2;
@@ -508,8 +548,8 @@ instruction {AND, OR, XOR}(a: u5, b: u5, d: u5, c: bool, s: u5, p: bool, i: bool
             dest = val1 ^ val2;
             flags_val = LogicCondition(dest);
             flags_mask = 0x3;
-    if not c:
-        SetFlagsRegisterByMask(flags_mask, flags_val);
+    if f:
+        flags = flags_val & flags_mask | nondeterministic() & ~flags_mask;
 ```
 
 
@@ -528,27 +568,47 @@ Payload Bits Legend:
 * `d`: Destination Register
 * `v`: Input Value
 * `q`: Shift Quantity
-* `f`: Suppress Flags Modification
+* `f`: Enable Flags Modification
 * `w`: Wrap Quantity
 * `r`: Shift Remainder (Input value)
 * `x`: Invert by Sign
 
+Flags: Sets `P`, `Z`, and `N` according to the result. Sets `C` if any 1 bit was shifted out of `v`. Sets `V` if `q` is greater than 32 (regardless of `w`)
+
 Behaviour: Shifts `v` by `q` and places the value in `d`, filling the shifted in bits with bits taken from the corresponding high bits of `r`.
 
 ```
-instruction FSL(d: u5, v: u5, q: u5, c: bool, x: bool, w: bool, r: u5):
+instruction FSL(d: u5, v: u5, q: u5, f: bool, x: bool, w: bool, r: u5):
     let val = ReadRegister(0, v);
     let quantity = ReadRegister(0, q);
     let remainder = ReadRegister(0, r);
     if x & SignBitOf(val):
         remainder = ~remainder;
+
+    let overflow: u5;
+    if quantity >= 32:
+        overflow = 2;
+    else:
+        overflow = 0;
     
     if w:
         quantity = quantity & 31;
     
 
-    let result = ShiftInLeft(val, remainder, quantity);
+    let result, out = ShiftInLeft(val, remainder, quantity);
     WriteRegister(0, d);
+    let carry: u5;
+    
+    if out != 0:
+        carry = 1;
+    else
+        carry = 0;
+    
+    if quantity
+    let flags_val = LogicCondition(result) | carry | overflow;
+    if f:
+        flags = flags_val;
+
 
 instruction FSR(d: u5, v: u5, q: u5, c: bool, x: bool, w: bool, r: u5):
     let val = ReadRegister(0, v);
@@ -557,12 +617,29 @@ instruction FSR(d: u5, v: u5, q: u5, c: bool, x: bool, w: bool, r: u5):
     if x & SignBitOf(val):
         remainder = ~remainder;
     
+    let overflow: u5;
+    if quantity >= 32:
+        overflow = 2;
+    else:
+        overflow = 0;
+
     if w:
         quantity = quantity & 31;
     
 
-    let result = ShiftInRight(val, remainder, quantity);
+    let result, out = ShiftInRight(val, remainder, quantity);
     WriteRegister(0, d);
+    let carry: u5;
+    
+    if out != 0:
+        carry = 1;
+    else
+        carry = 0;
+    
+    if quantity
+    let flags_val = LogicCondition(result) | carry | overflow;
+    if f:
+        flags = flags_val;
 ```
 
 
@@ -988,26 +1065,146 @@ instruction {NCPI0EF, NCPI1EF, NCPI2EF, NCPI3EF}(f: u6, p: u18):
 | Mnemonic | Opcode   | Payload                    |
 | -------- | -------- | -------------------------- |
 |          | `0--7`   | `8---------------------31` |
-| `HALT`   | `0x40`   | `000000000000000000000000` |
-| `STOP`   | `0x41`   | `000000000000000000000000` |
+| `HALT`   | `0x40`   | `mm0000000000000000000000` |
 
-Timing: 
-* `HALT`: 1
-* `STOP`: N/A
+Timing: 1
 
-Behaviour: Places the CPU in a low-power state and stops executing
-* `HALT`: Execution resumes after an NMI, IRQ (if enabled), Unit Error (if `sysctl.t=0`), or RESET.
-* `STOP`: Execution resumes after a RESET only. No other interrupts are serviced.
+Behaviour: Places the CPU in a low-power state and stops executing. 
+The CPU responds to interrupts as though `ictl.m` was set temporarily to `m`. The CPU resumes execution after receiving an interrupt that is valid at priority `m` (if `m=0` then the CPU will never resume execution)
 
 ```
-instruction HALT() {
-    SetStatus(2);
-    WaitForInterrupt();
+instruction HALT(m: u2) {
+    let saved_ictl: u32 = ReadRegister(1, 0);
+    WriteRegister(1, 0, ZeroExtend(m) | (saved_ictl & (1 << 31)));
+
+    if m != 0:
+        SetStatus(2);
+        WaitForInterrupt();
+        WriteRegister(1, 0, saved_ictl);
+    else:
+        SetStatus(3);
+        ShutdownCpu();
 }
-instruction STOP() {
-    SetStatus(3);
-    ShutdownCpu();
-}
+```
+
+### Interlocked instructions
+
+| Mnemonic | Opcode   | Payload                    |
+| -------- | -------- | -------------------------- |
+|          | `0--7`   | `8---------------------31` |
+| `FENCE`  | `0x48`   | `0000000000000000000000rr` |
+| `STIC`   | `0x49`   | `dddddsssssww0000000000rr` |
+| `LDIL`   | `0x4A`   | `dddddsssssww0000000000rr` |
+| `STICW`  | `0x4B`   | `dddddsssssbbbbb0000000rr` |
+| `LDILW`  | `0x4C`   | `dddddsssssbbbbb0000000rr` |
+
+
+Payload Bits legend:
+* `r`: Atomic Ordering
+* `d`: Destination Register
+* `s`: Source Register
+* `b`: Second source/destination register
+* `w`: Width
+
+Exceptions:
+
+* `EX[1]`: If `d` is unaligned
+* `EX[1]`: If a bus fault occurs
+* `EX[2]`: If `w = 3`
+* `FENCE`: `EX[2]`: if `r = 0`
+* `LDIL`, `LDILW`: `EX[2]`: if `r = 2`
+* `STIC`, `STICW`: `EX[2]`: if `r = 1`
+
+
+Behaviour:
+* `FENCE`: Serializes memory between processors according to `r`. 
+* `STIC`: Store `s` completing interlocked sequence on `d`. On success, the `z` flag is clear, and the store is guaranteed to be visible to any LDIL or LDILW instruction that is completed by a successful STIC instruction. It is also guaranteed that any ST instruction on any thread that was not observed by the LDIL instruction will not be overwritten by the STIC instruction.
+* `LDIL`: Load from `s` into `d`, starting an interlocked sequence on `s`.
+* `STICW`: Stores the 8-byte value in `b:s` into `d`, completing interlocked sequence on `d`. On success, the `z` flag is clear, and the store is guaranteed to be visible to any LDIL or LDILW instruction that is completed by a successful STIC instruction. It is also guaranteed that any ST instruction on any thread that was not observed by the LDILW instruction will not be overwritten by the STICW instruction.
+* `LDILW`: Loads from `s` into an 8-byte value in `b:d`, starting an interlocked sequence on `s`.
+
+An interlocked sequence started by LDIL must be completed by an STIC to the same memory address with the same width. 
+An interlocked sequence started by LDILW must be completed by an STICW to the same memory address. At most one interlocked sequence may be in progress at once per processor - starting a new one cancels the previous one.
+
+Flags:
+* `STIC` and `STICW` set `z` if an error completing the interlocked sequence occurs. In this case, no memory write or synchronization occurs.
+
+```
+instruction FENCE(r: Ordering):
+    if r == Relaxed:
+        Raise(EX[2]);
+    SynchronizeMemoryAccordingToFence(r);
+
+instruction STIC(d: u5, s: u5, w: u2, r: Ordering):
+    if r == Acquire:
+        Raise(EX[2]);
+    if w == 3:
+        Raise(EX[2]);
+    let dest = ReadRegister(0, d);
+    if dest & (1 << w)-1 != 0:
+        Raise(EX[1]);
+
+    let failed: u5;
+    let value = ReadRegister(0, s);
+    if not IL.valid or IL.addr != dest or IL.width != w:
+        failed = 8;
+    else:
+        failed = TryInterlockedMemoryWrite(dest, w, value);
+    
+    IL.valid = false;
+
+    flags = failed | nondeterministic() & ~8;
+
+instruction STICW(d: u5, s: u5, b: u5, r: Ordering):
+    if r == Acquire:
+        Raise(EX[2]);
+    let dest = ReadRegister(0, d);
+    if dest & 7 != 0:
+        Raise(EX[1]);
+
+    let failed: u5;
+    let value = ReadRegister(0, s);
+    let value_hi = ReadRegister(0, b);
+    SynchronizeMemoryAccordingToWrites(r);
+    if not IL.valid or IL.addr != dest or IL.width != 3:
+        failed = 8;
+    else:
+        failed = TryInterlockedMemoryWriteWide(dest, value, value_hi);
+    
+    IL.valid = false;
+
+    flags = failed | nondeterministic() & ~8;
+
+instruction LDIL(d: u5, s: u5, w: u2, r: Ordering):
+    if r == Release:
+        Raise(EX[2]);
+    if w == 3:
+        Raise(EX[2]);
+
+    let src = ReadRegister(0, s);
+    if src & (1 << w)-1 != 0:
+        Raise(EX[1]);
+    let value = InterlockedMemoryRead(src, w);
+    IL.valid = true;
+    IL.addr = src;
+    IL.width = w;
+    WriteRegister(0, d, value);
+
+instruction LDILW(d: u5, s: u5, b: u5, r: Ordering):
+    if r == Release:
+        Raise(EX[2]);
+    if w == 3:
+        Raise(EX[2]);
+
+    let src = ReadRegister(0, s);
+    if src & (1 << w)-1 != 0:
+        Raise(EX[1]);
+    let value, value_hi = InterlockedMemoryReadWide(src);
+    IL.valid = true;
+    IL.addr = src;
+    IL.width = 3;
+    WriteRegister(0, d, value);
+    WriteRegister(0, b, value_hi);
 ```
 
 !{#copyright}
