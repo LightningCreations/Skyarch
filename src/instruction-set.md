@@ -1093,10 +1093,10 @@ instruction HALT(m: u2) {
 | -------- | -------- | -------------------------- |
 |          | `0--7`   | `8---------------------31` |
 | `FENCE`  | `0x48`   | `0000000000000000000000rr` |
-| `STIC`   | `0x49`   | `dddddsssssww0000000000rr` |
-| `LDIL`   | `0x4A`   | `dddddsssssww0000000000rr` |
-| `STICW`  | `0x4B`   | `dddddsssssbbbbb0000000rr` |
-| `LDILW`  | `0x4C`   | `dddddsssssbbbbb0000000rr` |
+| `STIC`   | `0x4B`   | `dddddsssssww0000000000rr` |
+| `LDIL`   | `0x4C`   | `dddddsssssww0000000000rr` |
+| `STICW`  | `0x4D`   | `dddddsssssbbbbb0000000rr` |
+| `LDILW`  | `0x4E`   | `dddddsssssbbbbb0000000rr` |
 
 
 Payload Bits legend:
@@ -1125,6 +1125,7 @@ Behaviour:
 
 An interlocked sequence started by LDIL must be completed by an STIC to the same memory address with the same width. 
 An interlocked sequence started by LDILW must be completed by an STICW to the same memory address. At most one interlocked sequence may be in progress at once per processor - starting a new one cancels the previous one.
+Additionally, if an interrupt occurs, the interlocked sequence is canceled. This may be relaxed in future releases.
 
 Flags:
 * `STIC` and `STICW` set `z` if an error completing the interlocked sequence occurs. In this case, no memory write or synchronization occurs.
