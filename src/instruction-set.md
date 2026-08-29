@@ -46,7 +46,6 @@ Assembly syntax: `int`*`n`* or alias.
 Refer to the following table of defined registers. Some registers define a specific format
 
 
-
 | Regno. | Aliases  | Description               |
 | ------ | -------- | ------------------------- |
 | 0      | `intctl` | Interrupt Status Register |
@@ -84,9 +83,9 @@ Format:
 
 Both fields are set to `0` on startup.
 
-###### Interrupt Priority
+##### Interrupt Priority
 
-Interrupt Priority is used to ensure that overlapping Interrupts do not interefere.
+Interrupt Priority is used to ensure that overlapping Interrupts do not interfere.
 There are 4 Priority levels, numbered in descending order of priority (0 is the highest priority, 3 is the lowest priority)
 
 * Priority 0: Abort (Ex[0])
@@ -96,13 +95,14 @@ There are 4 Priority levels, numbered in descending order of priority (0 is the 
 
 An interrupt/trap is blocked when the priority level is less than `m`. The behaviour depends on the kind of exception:
 
-* Synchronous Exceptions (other than Abort) Reset the processor if `a = 1`, else they set `a = 1` and raise `Ex[0]`
+* Synchronous Exceptions (other than Abort) Reset the processor if `r = 1`, else they set `r = 1` and raise `Ex[0]`
 * Asynchronous Events are discarded
 * IRQs are buffered (up to an implementation-specific capacity until an `intret` occurs that sets `m` to be `3`) or are discarded.
 
+
 #### Interrupt Return Registers
 
-Each priority of interrupt (other than priority 0) has a distinct return register, labeled `intret`*`n`* where *n* is the priority value, which corresponds to Register *n* in map 1. Aborts are not recoverable, so no return register is provided. 
+Each priority of interrupt (other than priority 0) has a distinct return register, labeled `intret`*`n`* where *n* is the priority value, which corresponds to Register *n* in map 1. Aborts are not recoverable, so no return register is provided.
 
 Format:
 ```
@@ -143,7 +143,7 @@ Bits `a` contain the 29 most significant bits of an 8-byte aligned address which
 
 The `t` bits are the 30 most significant bits of the address to transfer control to when the specified interrupt occurs.
 
-The `p` bit must be set for all interrupt vectors that are present and valid to execute.
+The `p` bit must be set for all interrupt vectors that are present and valid to execute. If the CPU tries to execute a not-present interrupt vector, `EX[4]` is raised.
 
 ##### Interrupts
 
@@ -154,15 +154,73 @@ The first 16 interrupt entries are reserved for hardware exceptions, these inter
 * Entry `2`: Invalid Instruction - An instruction that is executed is an unknown opcode, reserved, malformed, or invalid
 * Entry `3`: Unaligned Branch Target - an indirect branch is unaligned.
 * Entry `4`: Consistency - An invalid system control structure was loaded from memory, or an invalid value was written to a system register.
-* Entry `7`: Non-maskable Interrupt - May be raised in response to a priority signal external to the processor that requires immediate resolution. This is handled like an IRQ, but does not obey the `i` flag. 
+* Entry `7`: PIRQ - May be raised in response to a priority signal external to the processor that requires immediate resolution. This is handled like an IRQ, but uses priority 2 instead of priority 3.
 * Entries `8`-`15`: Co-processor Unit `n` Error - The corresponding Coprocessor unit `n` signals an error after a `CPIn` instruction (`n` is Exception number - 4).
 * Entries `5`, `6`, and `16`-`31` are reserved.
 
 The remaining entries (32-63), may be allocated as IRQ vectors.
 
-Exceptions are raised regardless of the `i` bit. The `t` bit is set to `1` when an exception is raised. It is not modified by any other interrupt (including an NMI) being raised.
+#### Interrupt Checking
 
-If an exception occurs raising `EX[0]`, the processor RESETs. 
+Interrupts are performed as follows:
+
+```
+subroutine InterruptProcessor(iv: u6, pri: u2):
+    let intctl: u32 = ReadRegister(1, 0);
+    if (intctl & 3) < pri:
+        if pri == 1: 
+            if (intctl & 0x80000000) != 0:
+                ResetProcessor();
+            else:
+                WriteRegister(1, 0, 0x80000000);
+                InterruptProcessor(0, 0);
+                return;
+        else:
+            return;
+    
+    let addr: u32 = ReadRegister(1, 31) + (iv << 3);
+    let retreg = IP | intctl & 3;
+    if pri > 0:
+        WriteRegister(1, pri, retreg);
+    let iaddr = ReadMemory(addr);
+    let rest = ReadMemory(addr + 4);
+    CheckAndRaise(EX[2]);
+    if rest != 0 or (iaddr & 2) != 0:
+        Raise(EX[4]);
+    if (iaddr & 1) == 0:
+        Raise(EX[4]);
+    let addr = iaddr & ~3;
+    IP = addr;
+    return;
+
+subroutine Raise(EX[n]: Except):
+    CancelCurrentInstruction();
+    InterruptProcessor(n, 1);
+    return;
+
+subroutine CheckAndRaise(EX[n]: Except):
+    if AsynchronousExceptionPending(EX[n]):
+        Raise(EX[n]);
+        ClearPendingException(EX[n]);
+    return;
+
+subroutine CheckAsync():
+    if AsynchronousExceptionPending(EX[7]):
+        InterruptProcessor(7, 2);
+        ClearPendingException(EX[7]);
+    let cpe = ReadRegister(4, 30);
+    for n in 0..8:
+        if (cpe & (1 << n)) != 0 and AsynchronousExceptionPending(EX[8+n]):
+            InterruptProcessor(8+n, 2);
+        ClearPendingException(EX[8+n]);
+
+    let irq, hasirq = PullPendingIrq();
+    if hasirq:
+        InterruptProcessor(32+irq, 3);
+```
+
+The processor behaves as if `CheckAsync()` is called after each instruction finishes writing to all memory and all registers.
+
 
 ### Map 2: I/O Transfer Registers
 
@@ -176,7 +234,7 @@ The Information Registers Map is a Read Only Map that contains information about
 
 Each Co-processor has a 32-bit control word, which is defined by the Coprocessor.
 
-Register N in Map 4 is defined if Co-processor N is present and enabled. 
+Register N in Map 4 is defined if Co-processor N is present and enabled.
 
 Reads and writes to an undefined register or a register corresponding to a not-present or disabled coprocessor results in `EX[2]`.
 
@@ -381,10 +439,11 @@ instruction ST(s: u5, d: u5, w: u2 r: Ordering, m: UpdateMode):
     if width == 8:
         Raise(EX[2]);
     if addr & (width - 1):
-        Raise(Ex[1])
+        Raise(EX[1])
 
     SynchronizeMemoryAccordingToStore(r, addr);
     WriteAlignedMemoryTruncate(addr, val, width);
+    CheckAndRaisePending(EX[1]);
     let new_addr: u32;
     if m == 1:
         new_addr = addr + width;
@@ -408,6 +467,7 @@ instruction LD(s: u5, d: u5,w: u2, p: u2):
     if addr & (width - 1):
         Raise(Ex[1])
     let val = ReadAlignedMemoryZeroExtend(addr, w+1);
+    CheckAndRaisePending(EX[1]);
     SynchronizeMemoryAccordingToLoad(r, addr);
     WriteRegister(0,d,val);
     let new_addr: u32;
@@ -1005,8 +1065,7 @@ instruction {CPI0, CPI1, CPI2, CPI3}(f: u4, p: u20):
     
     ExecuteCoprocessorInstruction(coproc, f, p);
     WaitOnCoprocessor(coproc);
-    if PullCoprocessorException(coproc):
-        Raise(Ex[4+coproc]);
+    CheckAndRaisePending(EX[8+coproc]);
 
 instruction {CPI0EF, CPI1EF, CPI2EF, CPI3EF}(f: u6, p: u18):
     let coproc: u4;
@@ -1024,8 +1083,7 @@ instruction {CPI0EF, CPI1EF, CPI2EF, CPI3EF}(f: u6, p: u18):
     
     ExecuteCoprocessorInstruction(coproc, f, p);
     WaitOnCoprocessor(coproc);
-    if PullCoprocessorException(coproc):
-        Raise(Ex[4+coproc]);
+    CheckAndRaisePending(EX[8+coproc]);
 
 instruction {NCPI0, NCPI1, NCPI2, NCPI3}(f: u4, p: u20):
     let coproc: u4;
@@ -1151,6 +1209,7 @@ instruction STIC(d: u5, s: u5, w: u2, r: Ordering):
         failed = 8;
     else:
         failed = TryInterlockedMemoryWrite(dest, w, value);
+        CheckAndRaisePending(EX[1]);
     
     IL.valid = false;
 
@@ -1171,6 +1230,7 @@ instruction STICW(d: u5, s: u5, b: u5, r: Ordering):
         failed = 8;
     else:
         failed = TryInterlockedMemoryWriteWide(dest, value, value_hi);
+        CheckAndRaisePending(EX[1]);
     
     IL.valid = false;
 
@@ -1186,6 +1246,7 @@ instruction LDIL(d: u5, s: u5, w: u2, r: Ordering):
     if src & (1 << w)-1 != 0:
         Raise(EX[1]);
     let value = InterlockedMemoryRead(src, w);
+    CheckAndRaisePending(EX[1]);
     IL.valid = true;
     IL.addr = src;
     IL.width = w;
@@ -1201,6 +1262,7 @@ instruction LDILW(d: u5, s: u5, b: u5, r: Ordering):
     if src & (1 << w)-1 != 0:
         Raise(EX[1]);
     let value, value_hi = InterlockedMemoryReadWide(src);
+    CheckAndRaisePending(EX[1]);
     IL.valid = true;
     IL.addr = src;
     IL.width = 3;
