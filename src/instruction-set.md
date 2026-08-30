@@ -1484,5 +1484,3 @@ instruction LDILW(d: u5, s: u5, b: u5, r: Ordering):
     WriteRegister(0, d, value);
     WriteRegister(0, b, value_hi);
 ```
-
-
