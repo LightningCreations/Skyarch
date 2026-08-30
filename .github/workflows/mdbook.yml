@@ -29,7 +29,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      MDBOOK_VERSION: 0.4.37
+      MDBOOK_VERSION: 0.5.4
     permissions:
       contents: write
     steps:
@@ -39,14 +39,13 @@ jobs:
           curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf -y | sh
           rustup update
           cargo install --vers "^${MDBOOK_VERSION}" --no-default-features --features search mdbook
-          cargo install --git https://github.com/chorman0773/mdbook-fiction-tools
-          cargo install mdbook-spec
+          cargo install --locked mdbook-tracey
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v4
       - name: Build with mdBook
         env: 
-            MDBOOK_output__html__site_url: "/Micron" # Set the base URL of the site
+            MDBOOK_output__html__site_url: "/Skyarch" # Set the base URL of the site
             # Other variables can be set here, including epub output identifiers
         run: mdbook build
       - name: Upload artifact

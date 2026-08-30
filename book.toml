@@ -1,19 +1,12 @@
 [book]
 authors = ["Connor Horman"]
 language = "en"
-multilingual = false
 src = "src"
-title = "Fiction Template"
+title = "Skyarch ISA"
 
 [preprocessor.links]
 
-[preprocessor.add-copyright]
-exclude = ["COPYRIGHT.md"]
-
-[preprocessor.add-copyright.epub-fancy]
-include = []
-
-[preprocessor.spec]
+[preprocessor.tracey]
 
 [output.markdown]
 

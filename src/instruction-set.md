@@ -2,8 +2,14 @@
 
 ## Gen Design
 
+
+skyarch[general.word]
 Word Size: 32 bit
 
+skyarch[general.byte-order]
+Memory Load/Store Order: Little Endian
+
+skyarch[general.inst-size]
 Instruction Size/Alignment: 4 bytes
 
 Variable Sized Instructions: No
@@ -12,6 +18,7 @@ Common Flags/Condition Code Driven
 
 ## Instruction format
 
+skyarch[instruction.format]
 8-bit opcode in lowest byte, 24-bit payload in upper three bytes.
 
 Bit order is notated as MSB-first, e.g. "31 down to 0". In memory, data and instructions should be stored in little endian, so the instruction will be in the first/lowest address, followed by the three payload bytes.
@@ -20,6 +27,7 @@ Bit order is notated as MSB-first, e.g. "31 down to 0". In memory, data and inst
 
 ### Register Maps
 
+skyarch[register.maps]
 There are 8 maps of registers:
 
 - Map 0: General Purpose
@@ -29,23 +37,33 @@ There are 8 maps of registers:
 - Map 4: Coprocessor Control
 - Maps 8-15: Co-processor Registers.
 
+skyarch[register.layout]
 There are 32 registers of each type. Except for Map 0, not all registers may be defined.
-
-Co-processor Registers are available only if the applicable co-processors are connected.
 
 ### Map 0: General Purpose
 
+skyarch[register.general]
+
+skyarch[register.general.syntax]
 Assembly syntax: `r`_`n`_.
 
+skyarch[register.general.defs]
 All Registers of the Map are defined. Certain Registers have special meaning:
+
+skyarch[register.general.r0]
 
 - `r0` is the zero-register. It reads as zero, and writes are ignored.
 
 ### Map 1: Interrupt Support
 
+skyarch[register.interupt]
+
+skyarch[register.interrupt.syntax]
 Assembly syntax: `int`_`n`_ or alias.
 
 Refer to the following table of defined registers. Some registers define a specific format
+
+skyarch[register.interrupt.defs]
 
 | Regno. | Aliases   | Description                      |
 | ------ | --------- | -------------------------------- |
@@ -63,11 +81,12 @@ Refer to the following table of defined registers. Some registers define a speci
 | 11     | `intd3`   | Misc Config Register             |
 | 31     | `inttab`  | Interrupt Table Pointer          |
 
-Reading or Writing an undefined register causes `EX[2]`. Writing an invalid value to a defined register causes `EX[5]`
+skyarch[register.interrupt.validate]
+Reading or Writing an undefined register causes `EX[2]`. Writing an invalid value to a defined register causes `EX[4]`
 
 #### Interrupt Control (Map 1, Register 0)
 
-Format:
+skyarch[register.interrupt.intctl]
 
 ```
 +31-----------------------------0+
@@ -77,15 +96,19 @@ Format:
 
 (All bits indicated as 0 must be written with 0)
 
+skyarch[register.interrupt.intctl.desc]
+
 | Bits | Name            | Description                                    |
 | ---- | --------------- | ---------------------------------------------- |
 | `r`  | Abort Triggered | Set to 1 when an Abort (Ex[0]) occurs.         |
 | `m`  | Priority Mask   | Interrupts with priority value > m are blocked |
 
+skyarch[register.interrupt.intctl.startup]
 Both fields are set to `0` on startup.
 
 ##### Interrupt Priority
 
+skyarch[register.interrupt.intctl.priority]
 Interrupt Priority is used to ensure that overlapping Interrupts do not interfere.
 There are 4 Priority levels, numbered in descending order of priority (0 is the highest priority, 3 is the lowest priority)
 
@@ -94,7 +117,8 @@ There are 4 Priority levels, numbered in descending order of priority (0 is the 
 - Priority 2: Asynchronous High Priority Event (Ex[7], EX[8-15])
 - Priority 3: IRQs
 
-An interrupt/trap is blocked when the priority level is less than `m`. The behaviour depends on the kind of exception:
+skyarch[register.interrupt.intctl.mask]
+An interrupt/trap is blocked when the priority level is greater than `m`. The behaviour depends on the kind of exception:
 
 - Synchronous Exceptions (other than Abort) Reset the processor if `r = 1`, else they set `r = 1` and raise `Ex[0]`
 - Asynchronous Events are discarded
@@ -102,15 +126,18 @@ An interrupt/trap is blocked when the priority level is less than `m`. The behav
 
 #### Interrupt Return Registers
 
+skyarch[register.interrupt.return]
 Each priority of interrupt (other than priority 0) has a distinct return register, labeled `intret`_`n`_ where _n_ is the priority value, which corresponds to Register _n_ in map 1. Aborts are not recoverable, so no return register is provided.
 
-Format:
+skyarch[register.interrupt.return.format]
 
 ```
 +31-----------------------------0+
 |aaaaaaaaaaaaaaaaaaaaaaaaaaaaaamm|
 +--------------------------------+
 ```
+
+skyarch[register.interrupt.return.desc]
 
 | Bits | Name          | Description                                     |
 | ---- | ------------- | ----------------------------------------------- |
@@ -119,12 +146,16 @@ Format:
 
 #### Interrupt Scratch/Config Registers
 
+skyarch[register.interrupt.misc]
+
 Registers 4 through 11 in Map 1 are unused, freely writable registers, labeled `ints`_`n`_ for registers 4+n and `intd`_`n`_ for registers 8+n.
 The register `ints`_`n`_ is intended for use as a scratch register for interrupts with priority `n` (used during the interrupt procedure) and `intd`_`n`_ i intended for use as a data/configuration register for such interrupts (written by the program and read during each interrupt invocation).
 
 #### Interrupt/Exception Table (Map 1, Register 31)
 
-Format:
+skyarch[register.interrupt.table]
+
+skyarch[register.interrupt.table.format]
 
 ```
 +31-----------------------------0+
@@ -134,8 +165,10 @@ Format:
 
 (All bits indicated as 0 must be written with 0)
 
+skyarch[register.interrupt.table.addr]
 Bits `a` contain the 29 most significant bits of an 8-byte aligned address which points to the interrupt table. 512 bytes starting from this address refer to 64 8-byte entries of the interrupt table, which use the following format, in LSB-first order using little-endian byte encoding:
 
+skyarch[register.interrupt.table.entry]
 ```
 +31-----------------------------0+
 |tttttttttttttttttttttttttttttt0p|
@@ -148,9 +181,12 @@ The `t` bits are the 30 most significant bits of the address to transfer control
 
 The `p` bit must be set for all interrupt vectors that are present and valid to execute. If the CPU tries to execute a not-present interrupt vector, `EX[4]` is raised.
 
+All bits indicated as `0` must be `0` when the vector is read from memory, or `EX[4]` is raised.
+
 ##### Interrupts
 
-The first 16 interrupt entries are reserved for hardware exceptions, these interrupts are allocated as follows (and the `n`th entry in this list is designated elsewise as `EX[n]`):
+skyarch[register.interrupt.table.exceptions]
+The first 32 interrupt entries are reserved for hardware exceptions, these interrupts are allocated as follows (and the `n`th entry in this list is designated elsewise as `EX[n]`):
 
 - Entry `0`: Exception Handling Fault - an exception is raised when the `t` flag is set.
 - Entry `1`: Bus Fault - accessing memory in a particular manner causes an error, or attempts to access memory that doesn't exist.
@@ -161,11 +197,14 @@ The first 16 interrupt entries are reserved for hardware exceptions, these inter
 - Entries `8`-`15`: Co-processor Unit `n` Error - The corresponding Coprocessor unit `n` signals an error after a `CPIn` instruction (`n` is Exception number - 4).
 - Entries `5`, `6`, and `16`-`31` are reserved.
 
+skyarch[register.interrupt.table.irqs]
 The remaining entries (32-63), may be allocated as IRQ vectors.
 
 #### Interrupt Checking
 
 Interrupts are performed as follows:
+
+skyarch[register.interrupt.check]
 
 ```
 subroutine InterruptProcessor(iv: u6, pri: u2):
@@ -194,6 +233,7 @@ subroutine InterruptProcessor(iv: u6, pri: u2):
         Raise(EX[4]);
     let addr = iaddr & ~3;
     IP = addr;
+    IL.valid = false;
     return;
 
 subroutine Raise(EX[n]: Except):
@@ -222,45 +262,86 @@ subroutine CheckAsync():
         InterruptProcessor(32+irq, 3);
 ```
 
+skyarch[register.interrupt.check.pending-irq]
 The processor behaves as if `CheckAsync()` is called after each instruction finishes writing to all memory and all registers.
 
 ### Map 2: I/O Transfer Registers
 
+skyarch[register.io.syntax]
+Assembly Syntax: `io`_`n`_.
+
+skyarch[register.io]
 Map 2 defines a sequence of input and output shift registers for transfering data to external peripherals.
+
+skyarch[register.io.defs]
+All Registers are defined and have no implied meaning.
 
 ### Map 3: Information Registers
 
+skyarch[register.info]
 The Information Registers Map is a Read Only Map that contains information about the CPU. All Registers Presently Read 0. Writes are illegal and raise `EX[2]`
 
 ### Map 4: Coprocessor Control
 
+skyarch[register.coprocessor.control]
 Each Co-processor has a 32-bit control word, which is defined by the Coprocessor.
 
-Register N in Map 4 is defined if Co-processor N is present and enabled.
+skyarch[register.coprocessor.syntax]
+Assembly Syntax: `cp`_`n`_ or alias.
 
-Reads and writes to an undefined register or a register corresponding to a not-present or disabled coprocessor results in `EX[2]`.
+skyarch[register.coprocessor.def]
+Register N (N < 8) in Map 4 is defined if Co-processor N is present and enabled. Additionally, Register 30 is the coprocessor enable (`cpe`) register, and Register 31 is the coprocessor present (`cpp`) register.
+
+skyarch[register.coprocessor.undefined]
+Reads and writes to an undefined register or a register corresponding to a not-present or disabled coprocessor results in `EX[2]`. Writing to `cpp` results in `EX[2]`.
+
+skyarch[register.coprocessor.serialize]
+Where a `MOV` instruction writes to Register N (N < 8) in this map, the following guarantees are made about the ordering of surrounding instructions:
+
+- The `MOV` instruction will not begin executing until any Coprocessor Invocation instruction that references coprocessor N and occurs before it have been fully written-back,
+- Any Coprocessor Invocation instruction that references coprocessor N and occurs after it will not begin executing until the `MOV` instruction has been fully written-back
+
+skyarch[register.coprocessor.validity]
+A coprocessor may enforce arbitrary validity requirements on writes to its corresponding control register. Violations of these constraints generates a coprocessor error.
 
 #### Map 4, Register 30: Coprocessor Enable
 
+skyarch[register.coprocessor.enable]
 The Coprocessor Enable register allows the system software to control what coprocessors are operating and usable from the CPU.
 
-Format:
-
+skyarch[register.coprocessor.enable]
 ```
 +31-----------------------------0+
 |000000000000000000000000EEEEEEEE|
 +--------------------------------+
 ```
 
-The bits marked `E` may be set by the program when the corresponding bit of Register 31 is set. Setting the nth bit to 1 enables the coprocessor and setting it to 0 disables it.
+skyarch[register.coprocessor.enable.desc]
+The bits marked `E` may be set by the program when the corresponding bit of Register 31 is set.
+Setting the nth bit to 1 enables the coprocessor and setting it to 0 disables it.
 
-Bits marked as 0 must not be written with 1.
+
+skyarch[register.coprocessor.enable.undefined]
+A bit may only be written with 1 if the corresponding bit in `cpp` is 1. If a write violates this rule, `EX[4]` is raised. Bits marked as `0` can never be written with a `1`.
+
+skyarch[register.coprocessor.enable.serialize]
+Where a `MOV` instruction writes to this register the following guarantees are made about the ordering of surrounding instructions:
+
+- The `MOV` instruction will not begin executing until all off the following instructions that occur before it have been fully written-back:
+  - Any `MOV` instruction that references a register in this map, other than an access to this register, `cpp`, or any undefined register,
+  - Any `MOV` instruction that reads from a register in Maps 8-16 that does not refer to a not-present,
+  - Any coprocessor invocation instruction that does not refer to a not-present coprocessor,
+- Any of the following instructions that occur after the `MOV` instruction will not begin executing until the `MOV` instruction has been fully written-back:
+  - Any `MOV` instruction that references a register in this map, other than this register, `cpp`, or any undefined register,
+  - Any `MOV` instruction that accesses a register in Maps 8-16 that does not refer to a not-present coprocessor,
+  - Any coprocessor invocation instruction that does not refer to a not-present coprocessor.
 
 #### Map 4, Register 31: Coprocessor Present
 
-The Coprocessor Enable register allows the system software to determine what coprocessors are connected to the CPU. This register is read-only and cannot be written from the CPU. Attempting such a write with a MOV instruction raises `EX[2]`.
+skyarch[register.coprocessor.present]
+The Coprocessor Enable register allows the system software to determine what coprocessors are connected to the CPU. This register is read-only and cannot be written from the CPU.
 
-Format:
+skyarch[register.coprocessor.present.format]
 
 ```
 +31-----------------------------0+
@@ -268,13 +349,21 @@ Format:
 +--------------------------------+
 ```
 
+skyarch[register.coprocessor.present.def]
 The nth bit is set to 1 if the nth coprocessor is present. Note that it is not guaranteed that the set of enabled coprocessors is contiguous or that the set of enabled coprocessors begins at 0.
 
 ### Map 8-15: Co-processor Maps
 
+skyarch[register.coprocessor-maps]
+
 Co-processors connected to the system may expose up to 32 registers each. Registers in map `N` are only defined if the coprocessor co-processor (Co-processor N-8) is enabled.
 
+skyarch[register.coprocessor-maps.undefined]
+Writing to a register in map `8+N` with `cpe[bit N]` clear raises `Ex[2]`. Violating a validity constraint enforced by the coprocessor may raise an asynchronous coprocessor error.
+
 ### Reset State
+
+skyarch[register.init]
 
 On Reset (either hardware initiated, or initiated by an exception raised in an abort status), the CPU is initialized to the following state:
 
@@ -282,12 +371,16 @@ On Reset (either hardware initiated, or initiated by an exception raised in an a
 - `IP` is initialized to 0xFF00.
 - `cpe` is set to `0`.
 - `ictl` is set to `m=0, a=0`
+- `r0` is `0`.
 
-All other registers, including `flags`, have undefined values.
+skyarch[register.undefined]
+All other registers, including `flags`, have undefined values. An undefined value means that any independent read from the register may return an unpredictable result. Undefined values are cleared when the register is written to
 
 ## Instructions
 
 ### Undefined Instructions
+
+skarch[instr.und]
 
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
@@ -297,14 +390,14 @@ All other registers, including `flags`, have undefined values.
 
 (The Payload bits are ignored by both instructions)
 
-Timing (Execute Latency): 0 cycles
-
-Exception Order:
+skarch[instr.und.except]
 
 - `EX[2]` (decode): Unconditionally
 
-Behaviour: Unconditionally raises Invalid Instruction errors
+skyarch[instr.und.behaviour]
+Unconditionally raises Invalid Instruction errors
 
+skyarch[instr.und.code]
 ```
 instruction UND():
     Raise(EX[2])
@@ -312,15 +405,24 @@ instruction UND():
 
 ### Pause
 
+skyarch[instr.pause]
+
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
 |          | `7------0` | `31---------------------8` |
 | PAUSE    | `00000001` | `000000000000000000kkkkkk` |
 
-Timing (Execute Latency): 0 cycles + k
+skyarch[instr.pause.payload]
 
-Behaviour: Delays execution for `k` cycles, 0-63
+- `k`: Total pause time
 
+skyarch[instr.pause.behaviour]
+Delays execution for `k` clock cycles, 0-63,
+
+skyarch[instr.pause.serialize]
+Any instruction that follows a `PAUSE` instruction will not begin executing until the `k` cycles have elapsed since the `PAUSE` instruction completed execution.
+
+skyarch[instr.pause.code]
 ```
 instruction PAUSE(k: u6):
     SuspendForClockTicks(k)
@@ -328,12 +430,14 @@ instruction PAUSE(k: u6):
 
 ### Move
 
+skyarch[instr.mov]
+
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
 |          | `7------0` | `31---------------------8` |
 | MOV      | `00000010` | `00mmmmrl0sssss0ccccddddd` |
 
-Payload Bits Legend:
+skyarch[instr.mov.payload]
 
 - `m`: Map
 - `r`: Direction
@@ -342,12 +446,11 @@ Payload Bits Legend:
 - `c`: Condition Code (See Jump)
 - `d`: Destination Register
 
-Timing (Execute Latency): `1+c+t`, where:
 
-- `c` is 0 if Condition Code is 0, 1 if Condition Code is 15 or Latency Control is 0 and the Condition Check Fails, 2 if Latency Control is 1 or the Condition Code is not 15 and the Condition Check Succeeds
-- `t` is 0 if Map is 0 or Latency Control is 0 and the Condition Check Fails, 2 if Map is not 0 when Latency Control is 1 or the Condition Check Succeeds.
+skyarch[instr.mov.behaviour]
+Copies data between general purpose registers and to/from general purpose registers into other registers.
 
-Behaviour: Copies data between general purpose registers and to/from general purpose registers into other registers.
+skyarch[instr.mov.code]
 
 ```
 instruction MOV(d: u5, s: u5, m: u2, dir: u1, c: ConditionCode, l: bool):
@@ -368,18 +471,14 @@ instruction MOV(d: u5, s: u5, m: u2, dir: u1, c: ConditionCode, l: bool):
             Raise(EX[2]);
         let val: u32;
         val = ReadRegister(ms, s);
-        if md == 2 or m > 3:
+        if md == 1 or m > 3:
             ValidateConfigurationRegisterValue(d, val);
         WriteRegister(md, d, val);
-    else:
-        if l:
-            if m!=0:
-                SuspendForClockTicks(4);
-            else:
-                SuspendForClockTicks(2);
 ```
 
 ### LD/ST
+
+skyarch[instr.ldst]
 
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
@@ -389,7 +488,7 @@ instruction MOV(d: u5, s: u5, m: u2, dir: u1, c: ConditionCode, l: bool):
 | `LDI`    | `00000101` | `iiiiiiiiiiiiiiii00xddddd` |
 | `LRA`    | `00000110` | `oooooooooooooooo00xddddd` |
 
-Payload Bits Legend:
+skyarch[instr.ldst.payload]
 
 - `r`: Ordering
 - `m`: Update mode
@@ -400,17 +499,18 @@ Payload Bits Legend:
 - `o`: Offset
 - `d`: Destination Register
 
-Timing:
 
-- `ST`, `LD`: 4 Cycles, plus Memory Delay
-- `LDI`, `LRA`: 1 Cycle
-
-Behaviour:
+skyarch[instr.ldst.behaviour]
 
 - `ST`: Stores `1 << w` bytes from `d` to `[s]`
 - `LD`: Loads `1 << w` bytes from `[s]` into `d`
 - `LDI`: Loads an immediate `i` (sign or zero exteneded) into the first (h=0) 16 bits of `d`
 - `LRA`: Loads the address `IP + o` (`o` is a signed immediate if `x` is true, and an unsigned immediate otherwise) into `d`. `IP` is taken from the beginning of the next instruction
+
+skyarch[instr.ldst.well-ordered]
+Every `ST`, `STIC`, or `STICW` instruction that modifies a given memory region will become visible on every core of the system in the same order.
+
+skyarch[instr.ldst.code]
 
 ```
 
@@ -487,14 +587,15 @@ instruction LRA(d: u5, x: bool, i: u16):
 
 ### Immediate Arithmetic
 
+skyarch[instr.add-imm]
+
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
 |          | `7------0` | `31---------------------8` |
 | `ADDI`   | `00001000` | `iiiiiiiiiiiiiiiihfxddddd` |
 
-Timing: 2
 
-Payload Bits Legend:
+skyarch[instr.add-imm.payload]
 
 - `i`: Immediate
 - `h`: High half
@@ -502,10 +603,13 @@ Payload Bits Legend:
 - `x`: Extend Sign
 - `d`: Destination Register
 
-Flags: Sets `P`, `N`, and `Z` according to the result. Sets `V` and `C` according to the computation (signed overflow and carry)
+skyarch[instr.add-imm.flags]
+Sets `P`, `N`, and `Z` according to the result. Sets `V` and `C` according to the computation (signed overflow and carry)
 
-Behaviour: Adds a 12-bit zero or sign-extended immediate to `d`.
+skyarch[instr.add-imm.behaviour]
+Adds a 16-bit zero or sign-extended immediate to `d`.
 
+skyarch[instr.add-imm.code]
 ```
 instruction ADDI(d: u5, x: bool, f: bool, h: bool, i: u16):
     let imm: u32;
@@ -527,6 +631,8 @@ instruction ADDI(d: u5, x: bool, f: bool, h: bool, i: u16):
 
 ### ALU Instructions
 
+skyarch[instr.alu]
+
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
 |          | `7------0` | `31---------------------8` |
@@ -536,9 +642,7 @@ instruction ADDI(d: u5, x: bool, f: bool, h: bool, i: u16):
 | `OR`     | `00001100` | `jipsssssfbbbbbaaaaaddddd` |
 | `XOR`    | `00001101` | `jipsssssfbbbbbaaaaaddddd` |
 
-Timing: 2
-
-Payload Bits Legend:
+skyarch[instr.alu.payload]
 
 - `c`: Carry in
 - `j`: Invert op 2
@@ -550,12 +654,21 @@ Payload Bits Legend:
 - `a`: Source Register 1
 - `d`: Destination Register
 
-Flags:
+skyarch[instr.alu.flags]
 
 - `ADD`/`SUB`: Sets `P`, `N`, and `Z` according to the result. Sets `V` and `C` according to the computation (signed overflow and carry)
 - `AND`/`OR`/`XOR`: Sets `P`, `N`, and `Z` according to the result. `V` and `C` are set to unspecified values.
 
-Behaviour:
+skyarch[instr.alu.behaviour]
+Computes the ALU corresponding ALU operation between the values in GPRs `b` and `a`, writing the result to GPR `d`. The operand corresponding to `p` is first shifted left by `s` (`p=1` shifts `a`, `p=0` shifts `b`)
+
+- `ADD`: The result is `a + b`. If `c` is set, the carry flag is also added in.
+- `SUB`: The result is `a - b`. If `c` is set, the carry flag is borrowed by the subtraction.
+- `AND`: The result is `(i)a & (j)b`, `a` is inverted before being shifted if `i` is set, and `b` is inverted before being shifted if `j` is set.
+- `OR`: The result is `(i)a | (j)b`, `a` is inverted before being shifted if `i` is set, and `b` is inverted before being shifted if `j` is set.
+- `XOR`: The result is `(i)a ^ (j)b`, `a` is inverted before being shifted if `i` is set, and `b` is inverted before being shifted if `j` is set.
+
+skyarch[instr.alu.code]
 
 ```
 instruction {ADD, SUB}(a: u5, b: u5, d: u5, f: bool, s: u5, p: bool, c: bool):
@@ -620,15 +733,15 @@ instruction {AND, OR, XOR}(a: u5, b: u5, d: u5, f: bool, s: u5, p: bool, i: bool
 
 ### Funnel Shifts
 
+skyarch[instr.shift]
+
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
 |          | `7------0` | `31---------------------8` |
 | `FSL`    | `00001110` | `rrrrrw0xfqqqqqvvvvvddddd` |
 | `FSR`    | `00001111` | `rrrrrw0xfqqqqqvvvvvddddd` |
 
-Timing: 3
-
-Payload Bits Legend:
+skyarch[instr.shift.payload]
 
 - `r`: Shift Remainder (Input value)
 - `w`: Wrap Quantity
@@ -638,10 +751,16 @@ Payload Bits Legend:
 - `v`: Input Value
 - `d`: Destination Register
 
-Flags: Sets `P`, `Z`, and `N` according to the result. Sets `C` if any 1 bit was shifted out of `v`. Sets `V` if `q` is greater than 32 (regardless of `w`)
+skyarch[instr.shift.flags]
+Sets `P`, `Z`, and `N` according to the result. Sets `C` if any 1 bit was shifted out of `v`. Sets `V` if `q` is greater than 32 (regardless of `w`)
 
-Behaviour: Shifts `v` by `q` and places the value in `d`, filling the shifted in bits with bits taken from the corresponding high bits of `r`.
+skyarch[instr.shift.behaviour]
+Shifts `v` by `q` and places the value in `d`, filling the shifted in bits with bits taken from the corresponding high bits of `r`. `q` wraps at 32 if `w` is set. If `w` is clear, excess shift quanities shift `r` in fully first.
 
+- `FSL`: `v` is shifted left by `q`
+- `FSR`: `v` is shifted right by `q`
+
+skyarch[instr.shift.code]
 ```
 instruction FSL(d: u5, v: u5, q: u5, f: bool, x: bool, w: bool, r: u5):
     let val = ReadRegister(0, v);
@@ -709,6 +828,8 @@ instruction FSR(d: u5, v: u5, q: u5, c: bool, x: bool, w: bool, r: u5):
 
 ### Branches
 
+skyarch[instr.branch]
+
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
 |          | `7------0` | `31---------------------8` |
@@ -716,7 +837,7 @@ instruction FSR(d: u5, v: u5, q: u5, c: bool, x: bool, w: bool, r: u5):
 | `JMPR`   | `00010001` | `000000000rrrrr0cccclllll` |
 | `IRET`   | `00010010` | `0000000000000000000000pp` |
 
-Payload Bits Legend:
+skyarch[instr.branch.payload]
 
 - `o`: Destination Offset (Bits 2..17)
 - `r`: Destination Register
@@ -724,18 +845,14 @@ Payload Bits Legend:
 - `l`: Link Register
 - `p`: Target Interrupt Priority
 
-Timing: `2+t+l+r` where:
-
-- `t` is `1` if the branch is taken and `0` if it is not taken
-- `l` is `1` if Link Register is non-zero and the branch is taken, and `0` otherwise
-- `r` is `1` for `JMPR` and `0` for `JMP`
-
-Behaviour: Jumps to the destination, if the condition is satisfied, saving the return address in `l` if taken:
+skyarch[instr.branch.behaviour]
+Jumps to the destination, if the condition is satisfied, saving the return address in `l` if taken:
 
 - `JMP`: The offset is `IP + o * 4` where `o` is a signed offset. `IP` is the same as the return address and points to the beginning of the next instruction
 - `JMPR`: The offset is read from `r`
 - `IRET`: The offset it read from register `p` (p!=0) in Map 1. `intctl.m` is also loaded from `p.m` and `intctl.a` is cleared
 
+skyarch[instr.branch.code]
 ```
 instruction JMP(c: ConditionCode, l: u5, o: u15):
     let disp = SignExtend(o) << 2;
@@ -762,12 +879,17 @@ instruction IRET(p: u2):
     let val = ReadRegister(1, reg);
     let addr = val & !3;
     IP = addr;
+    IL.valid = false;
     WriteRegister(1, 0, val & 3);
 ```
 
 #### Condition Code
 
+skyarch[instr.branch.condition]
+
 `JMP`, `JMPR`, and `MOV` all use a 4-bit condition code to encode the branch condition. This includes conditions for "Always" and "Never".
+
+skyarch[instr.branch.condition.def]
 
 ```
 enum ConditionCode is u4:
@@ -826,25 +948,33 @@ function CheckCondition(flags: u32, cc: ConditionCode) is bool:
 
 ### I/O Transfers
 
+skyarch[instr.io]
+
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
 |          | `7------0` | `31---------------------8` |
 | `IN`     | `00010100` | `wwwww000000ppppppppddddd` |
 | `OUT`    | `00010101` | `wwwww000000ppppppppsssss` |
 
-Payload Bits Legend:
+skyarch[instr.io.payload]
 
 - w: Transfer Bit Width
 - p: Port Number
 - d: Destination Transfer Register
 - s: Source Transfer Register
 
-Timing: 7 + Port Delay
+skyarch[instr.io.behaviour]
 
-Behaviour: Shift `w` (in `1..=32`, mod 32) bits in an io transfer register in or out to an I/O Port. w=0 = 32
+Shift `w` (in `1..=32`, mod 32) bits in an io transfer register in or out to an I/O Port. w=0 = 32
 
 - `IN` : Shifts bits into the high bits of the transfer register
 - `OUT`: Shifts bits out of the low bits of the transfer register
+
+skyarch[instr.io.serialize]
+Any `IN` or `OUT` instruction will not begin executing on a CPU until all `IN` or `OUT` instructions that occur before it have been fully written back. Additionally
+
+- Any `OUT` instruction does not begin executing until all `LD` instructions that occur before it have been fully written back, and all `ST` instructions that occur before it have fully written to main memory
+- Any `LD` or `ST` instruction does not begin executing until any `IN` instruction that occurs before it has been fully written back
 
 ```
 instruction IN(s: u5, p: u8, w: u5):
@@ -868,6 +998,8 @@ function ExtendWidth(w: u5) is u6:
 
 ### Flags Manipulation
 
+skyarch[instr.flags]
+
 | Mnemonic  | Opcode     | Payload                    |
 | --------- | ---------- | -------------------------- |
 |           | `7------0` | `31---------------------8` |
@@ -875,21 +1007,21 @@ function ExtendWidth(w: u5) is u6:
 | `STFLAGS` | `00011001` | `00000000000000fffffsssss` |
 | `XVP`     | `00011010` | `000000000000000000000000` |
 
-Payload Bits Legend:
+skyarch[instr.flags.payload]
 
 - f: Flag modification mask
 - d: Destination Register
 - s: Source Register
 
-Timing: 1
-
-Behaviour:
+skyarch[instr.flags.behaviour]
 
 - `LDFLAGS` loads the flags bits into the lower 5 bits of `d` (zero extended)
 - `STFLAGS` stores the lower 5 bits of `s` into the flags bits, overwriting only flags set to 1 in `f`
 - `XVP` exchanges the v and p flags
 
-The Flags Bits are:
+skyarch[instr.flags.register]
+
+The `flags` bits are, in order
 
 | `4---0` |
 | ------- |
@@ -900,6 +1032,8 @@ The Flags Bits are:
 - `n`: Negative
 - `v`: Signed Overflow
 - `c`: Carry
+
+skyarch[instr.flags.code]
 
 ```
 instruction LDFL(d: u5, f: u5):
@@ -918,20 +1052,24 @@ instruct XVP():
 
 ### Exchange Register Contents
 
+skyarch[instr.xchg]
+
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
 |          | `7------0` | `31---------------------8` |
 | `XCHG`   | `00011100` | `000000000bbbbblccccaaaaa` |
 
-Payload Bits Legend:
+skyarch[instr.xchg.payload]
 
 - `b`: Register 2
 - `l`: Latency Control
 - `c`: Condition Code (See Jump)
 - `a`: Register 1
 
+skyarch[instr.xchg.behaviour]
 Exchanges GPR values `a` and `b`, if the condition check succeeds.
 
+skyarch[instr.xchg.code]
 ```
 instruction XCHG(a: u5, b: u5, l: bool, c: ConditionCode):
     let val1 = ReadRegister(0, a);
@@ -943,19 +1081,24 @@ instruction XCHG(a: u5, b: u5, l: bool, c: ConditionCode):
 
 ### Extend Register Contents
 
+skyarch[instr.ext]
+
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
 |          | `7------0` | `31---------------------8` |
 | `EXT`    | `00011101` | `wwwww00000000xsssssddddd` |
 
-Payload Bits Legend:
+skyarch[instr.ext.payload]
 
 - `w`: Value width
 - `x`: Extend Kind (sign/zero)
 - `s`: Source
 - `d`: Destination
 
+skyarch[instr.ext.behaviour]
 Masks only the lower `w` bits of a register, and extends it according to `x`
+
+skyarch[instr.ext.code]
 
 ```
 enum ExtKind:
@@ -975,24 +1118,30 @@ instruction EXT(dest: u5, src: u5, x: ExtKind, w: u5):
 
 ### Random Bits
 
+skyarch[instr.rand]
+
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
 |          | `7------0` | `31---------------------8` |
 | `RBGEN`  | `00011110` | `wwwww000000000eeeeeddddd` |
 
-Payload Bits Legend:
+skyarch[instr.rand.payload]
 
 - `w`: Poll width
 - `e`: Status Destination
 - `d`: Destination
 
-Behaviour: Polls a hardware random bit generator. If successful, writes `w` (in `1..=32`, mod 32) random bits to `d` and clears `flags.z`. If unsuccesful, writes `0` to `d` and sets `flags.z`. In all cases, the current status of the RBG is stored to `e`. (TODO: Write out status format). Note that `flags.z` is only set depending on success/failure. In particular, a successful poll that results in all `0s` (Approximately a 2^-(w+1) chance) will still clear `flags.z`.
+skyarch[instr.rand.behaviour]
+Polls a hardware random bit generator. If successful, writes `w` (in `1..=32`, mod 32) random bits to `d` and clears `flags.z`. If unsuccesful, writes `0` to `d` and sets `flags.z`. In all cases, the current status of the RBG is stored to `e`. (TODO: Write out status format). Note that `flags.z` is only set depending on success/failure. In particular, a successful poll that results in all `0s` (Approximately a 2^-(w+1) chance) will still clear `flags.z`.
 
+skyarch[instr.rand.requirements]
 The Random Bit Generator polled by the instruction shall have at least the following properties:
 
-- Each complete output from the instruction is independant from all previous outputs
+- Each complete output from the instruction is independant from other outputs on any core
 - Each output from the instruction is distinct from all other outputs, with `2^-((w)/2)` probability of collision.
 - If this instruction is used to generate at least 128 bits of randomness, which is then processed by a Cryptographic Hash Function, the resulting output shall have at least 64 bits of enthropy.
+
+skyarch[instr.rand.code]
 
 ```
 instruction RBGEN(d: u5, e: u5, w: u5):
@@ -1033,6 +1182,8 @@ The CPU shall ensure that it automatically attempts a reset of the Random Bit Ge
 
 ### Invoke Coprocessor Unit
 
+skyarch[instr.coprocessor]
+
 | Mnemonic  | Opcode     | Payload                    |
 | --------- | ---------- | -------------------------- |
 |           | `7------0` | `31---------------------8` |
@@ -1043,22 +1194,26 @@ The CPU shall ensure that it automatically attempts a reset of the Random Bit Ge
 
 (`x` is a value from `0` to `7`, representing the co-processor number to invoke, for example, `CPI0` has opcode 0x20 and `NCPI7` has opcode 0x2F)
 
-Timing: 2 + N where:
-
-- For `CPIx` and `CPIxEF`, `N` is the delay in cycles before the co-processor becomes ready to execute again
-- For `NCPIx` and `NCPIxEF`, `N` is 0.
-
-Payload Bits Legend:
+skyarch[instr.coprocessor.payload]
 
 - `p`: Co-processor instruction payload
 - `f`: Co-processor function
 
-Behaviour: Executes the specified Coprocessor function with the specified payload
+skyarch[instr.coprocessor.behaviour]
+Executes the specified Coprocessor function with the specified payload
 
 - `CPIx`/`CPIxEF`: Waits for the Co-processor to finish all operations, and raises the appropriate unit error if the Coprocessor reports it,
 - `NCPIx`/`NCPIxEF`: Finishes immediately.
 - `CPIx`/`NCPIx`: Allows specifying up to 16 functions with a 20-bit payload
 - `CPIxEF`/`NCPIxEF`: Allows specifying up to 64 functions with a 18-bit payload (bottom 18-bits of the 20-bit payload)
+
+skyarch[instr.coprocessor.serialize]
+If a `CPIx` or `CPIxEF` instruction begins execution on a core, the following guarantees are made:
+
+* Any `CPIx`, `CPIxEF`, `NCPIx`, or `NCPIxEF` instruction (for the same `x`) that occurs after will not begin executing until the `CPIx` or `CPIxEF` and all `NCPIx` and `NCPIxEF` instructions that occur before the `CPIx` or `CPIxEF` have been fully written back, and
+* Any `MOV` instruction that loads from a register in map `8+x` will not begin executing until the `CPIx` or `CPIxEF` and all `NCPIx` and `NCPIxEF` instructions that occur before the `CPIx` or `CPIxEF` have been fully written back.
+
+skyarch[instr.coprocessor.code]
 
 ```
 instruction {CPI0, CPI1, CPI2, CPI3}(f: u4, p: u20):
@@ -1132,15 +1287,20 @@ instruction {NCPI0EF, NCPI1EF, NCPI2EF, NCPI3EF}(f: u6, p: u18):
 
 ### Halt/Stop CPU
 
+skyarch[instr.halt]
+
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
 |          | `7------0` | `31---------------------8` |
 | `HALT`   | `01000000` | `0000000000000000000000mm` |
 
-Timing: 1
 
-Behaviour: Places the CPU in a low-power state and stops executing.
-The CPU responds to interrupts as though `ictl.m` was set temporarily to `m`. The CPU resumes execution after receiving an interrupt that is valid at priority `m` (if `m=0` then the CPU will never resume execution)
+skyarch[instr.halt.behaviour]
+Places the CPU in a low-power state and stops executing.
+The CPU responds to interrupts as though `ictl.m` was set temporarily to `m`. The CPU resumes execution after receiving an interrupt that is valid at priority `m` (if `m=0` then the CPU will never resume execution).
+
+skyarch[instr.halt.serialize]
+The `HALT` instruction will not begin executing until instructions that occur before it have been fully written back, and no instructions that occur after it will begin executing until the `HALT` instruction is fully written back.
 
 ```
 instruction HALT(m: u2) {
@@ -1159,6 +1319,8 @@ instruction HALT(m: u2) {
 
 ### Interlocked instructions
 
+skyarch[instr.interlocked]
+
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
 |          | `7------0` | `31---------------------8` |
@@ -1168,7 +1330,7 @@ instruction HALT(m: u2) {
 | `STICW`  | `01001101` | `rr0000000bbbbbsssssddddd` |
 | `LDILW`  | `01001110` | `rr0000000bbbbbsssssddddd` |
 
-Payload Bits legend:
+skyarch[instr.interlocked.payload]
 
 - `r`: Atomic Ordering
 - `w`: Width
@@ -1176,7 +1338,7 @@ Payload Bits legend:
 - `s`: Source Register
 - `d`: Destination Register
 
-Exceptions:
+skyarch[instr.interlocked.exceptions]
 
 - `EX[1]`: If `d` is unaligned
 - `EX[1]`: If a bus fault occurs
@@ -1185,22 +1347,62 @@ Exceptions:
 - `LDIL`, `LDILW`: `EX[2]`: if `r = 2`
 - `STIC`, `STICW`: `EX[2]`: if `r = 1`
 
-Behaviour:
+skyarch[instr.interlocked.flags]
+
+- `STIC` and `STICW` set `z` if the validation check fails. In this case, no memory write or synchronization occurs.
+
+skyarch[instr.interlocked.behaviour]
 
 - `FENCE`: Serializes memory between processors according to `r`.
 - `STIC`: Store `s` completing interlocked sequence on `d`. On success, the `z` flag is clear, and the store is guaranteed to be visible to any LDIL or LDILW instruction that is completed by a successful STIC instruction. It is also guaranteed that any ST instruction on any thread that was not observed by the LDIL instruction will not be overwritten by the STIC instruction.
-- `LDIL`: Load from `s` into `d`, starting an interlocked sequence on `s`.
+- `LDIL`: Load from `s` into `d`, starting an interlocked sequence on `s` with `IL.width = w`
 - `STICW`: Stores the 8-byte value in `b:s` into `d`, completing interlocked sequence on `d`. On success, the `z` flag is clear, and the store is guaranteed to be visible to any LDIL or LDILW instruction that is completed by a successful STIC instruction. It is also guaranteed that any ST instruction on any thread that was not observed by the LDILW instruction will not be overwritten by the STICW instruction.
-- `LDILW`: Loads from `s` into an 8-byte value in `b:d`, starting an interlocked sequence on `s`.
+- `LDILW`: Loads from `s` into an 8-byte value in `b:d`, starting an interlocked sequence on `s` with `IL.width = 3`
 
-An interlocked sequence started by LDIL must be completed by an STIC to the same memory address with the same width.
-An interlocked sequence started by LDILW must be completed by an STICW to the same memory address. At most one interlocked sequence may be in progress at once per processor - starting a new one cancels the previous one.
-Additionally, if an interrupt occurs, the interlocked sequence is canceled. This may be relaxed in future releases.
+skyarch[instr.interlocked.state]
+Each a core acts as though it stores the following additional state:
 
-Flags:
+- Whether or not a valid interlocked transaction is occur (`IL.valid`)
+- The address of the most recently begun interlocked transaction (`IL.addr`) if `IL.valid` is true
+- The width of the most recently begun interlocked transaction (`IL.width`)
 
-- `STIC` and `STICW` set `z` if an error completing the interlocked sequence occurs. In this case, no memory write or synchronization occurs.
+skyarch[instr.interlocked.invalidate]
+The validity of an interlocked transaction on a core is reset when any of the following occurs:
 
+- An `STIC` or `STICW` instruction completes execution, whether or not it was successful or failed
+- An interrupt or exception occurs
+- The `iret` instruction is issued
+- If transaction is invalidated by a memory write on any core that violates the guarantees of any subsequent `STIC` or `STICW` instruction.
+
+skyarch[instr.interlocked.constraint-stic]
+
+An `STIC` instruction fails (sets `z = 1` and does not modify any memory) if:
+
+- `IL.valid` is false
+- `IL.addr` refers to a different address than the `STIC` instruction
+- `IL.width` refers to a different width than the `STIC` instruction
+
+skyarch[instr.interlocked.constraint-sticw]
+
+An `STICW` instruction fails (sets `z = 1` and does not modify any memory) if:
+
+- `IL.valid` is false
+- `IL.addr` refers to a different address than the `STICW` instruction
+- `IL.width` is not 3.
+
+skyarch[instr.interlocked.acquire]
+On a multicore system, any instruction that synchronizes memory according to the `Acquire` or `SeqCst` order guarantees that the instruction will not write back its result until, for each value loaded by any of the following instructions, all memory accesses visible to the corresponding store instruction will be observed by any instruction that occurs after that instruction:
+
+- For `FENCE`: Any `LD`, `LDIL`, or `LDILW` instruction that preceeds it
+- For `LD`, `LDIL`, or `LDILW`: That instruction.
+
+skyarch[instr.interlocked.release]
+On a multicore system, any instruction that synchronizes memory according to the `Release` or `SeqCst` order guarantees that the write will not be observed by any core until all memory operations that occur before it have completed and become visible to the instruction:
+
+- For `FENCE`; Any `ST`, `STIC`, or `STICW` instruction that occurs after it
+- For `ST`, `STIC`, or `STICW`: That insttruction.
+
+skyarch[instr.interlocked.code]
 ```
 instruction FENCE(r: Ordering):
     if r == Relaxed:
@@ -1283,4 +1485,4 @@ instruction LDILW(d: u5, s: u5, b: u5, r: Ordering):
     WriteRegister(0, b, value_hi);
 ```
 
-!{#copyright}
+
