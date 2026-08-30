@@ -1402,6 +1402,9 @@ On a multicore system, any instruction that synchronizes memory according to the
 - For `FENCE`; Any `ST`, `STIC`, or `STICW` instruction that occurs after it
 - For `ST`, `STIC`, or `STICW`: That insttruction.
 
+skyarch[instr.interlocked.seqcst]
+On a multicore system, any instruction that synchronizes memory according to the `SeqCst` order guarantees that all cores will observe the same order of memory effects caused by all such instructions.
+
 skyarch[instr.interlocked.code]
 ```
 instruction FENCE(r: Ordering):
