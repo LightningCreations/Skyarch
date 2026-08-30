@@ -1116,6 +1116,35 @@ instruction EXT(dest: u5, src: u5, x: ExtKind, w: u5):
     WriteRegister(0, dest, res);
 ```
 
+### Swap Byte order
+
+skyarch[instr.bswap]
+
+| Mnemonic | Opcode     | Payload                    |
+| -------- | ---------- | -------------------------- |
+|          | `7------0` | `31---------------------8` |
+| `BSWAP`  | `00011110` | `000000000000000sssssddddd`|
+
+skyarch[instr.bswap.payload]
+
+- `s`: Source operand
+- `d`: Destination Operand
+
+skyarch[instr.bswap.behaviour]
+Swaps the order of bytes from the source value.
+
+skyarch[instr.bswap.code]
+```
+instruction BSWAP(s: u5, d: u5):
+    let sval: u32 = ReadRegister(0, s);
+    let rval: u32;
+    rval[8:0] = sval[32:24];
+    rval[16:8] = sval[24:16];
+    rval[24:16] = sval[16:8];
+    rval[32:24] = sval[8:0];
+    WriteRegister(0, d);
+```
+
 ### Random Bits
 
 skyarch[instr.rand]
@@ -1123,7 +1152,7 @@ skyarch[instr.rand]
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
 |          | `7------0` | `31---------------------8` |
-| `RBGEN`  | `00011110` | `wwwww000000000eeeeeddddd` |
+| `RBGEN`  | `00011111` | `wwwww000000000eeeeeddddd` |
 
 skyarch[instr.rand.payload]
 
