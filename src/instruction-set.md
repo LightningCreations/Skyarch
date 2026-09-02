@@ -494,7 +494,7 @@ skyarch[instr.ldst.payload]
 - `m`: Update mode
 - `w`: Width
 - `s`: Source Register
-- `x`: Sign/Zero Extend
+- `x`: Set sign bits (Higher half)
 - `i`: Immediate Value
 - `o`: Offset
 - `d`: Destination Register
@@ -600,7 +600,7 @@ skyarch[instr.add-imm.payload]
 - `i`: Immediate
 - `h`: High half
 - `f`: Enable Flags Modification
-- `x`: Extend Sign
+- `x`: Set sign bits (upper bits)
 - `d`: Destination Register
 
 skyarch[instr.add-imm.flags]
@@ -613,6 +613,10 @@ skyarch[instr.add-imm.code]
 ```
 instruction ADDI(d: u5, x: bool, f: bool, h: bool, i: u16):
     let imm: u32;
+
+    if h and x:
+        Raise(Ex[2]);
+
     if h:
         imm = ZeroExtend(i, 32) << 16;
     else if x:

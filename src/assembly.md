@@ -13,8 +13,9 @@ The following operand syntax types are used in instructions
 | `IOR`     | I/O Register operand           | An I/O Transfer Register (Map 3)                             |
 | `ANYREG`  | Any Register                   | Any Register operand                                         |
 | `UIMM16`  | Immediate (unsigned 16-bit)    | 16-bit Immediate operand                                     |
-| `SIMM16`  | Immediate (signed 16-bit)      | 16-bit Immediate operand                                     |
-| `PCREL16` | PC Relative Address (16-bit)   | 16-bit offset from IP in bytes                               |
+| `SIMM16`  | Immediate (signed 16-bit)      | 16-bit Immediate Operand                                     |
+| `SIMM17`  | Immediate (signed 17-bit)      | 17-bit Immediate operand                                     |
+| `PCREL17` | PC Relative Address (16-bit)   | 16-bit offset from IP in bytes                               |
 | `PCREL32` | PC Relative Address (32-bit)   | 32-bit offset from IP in bytes                               |
 | `OFF17`   | Jump Offset (signed 20-bit)    | 20-bit jump offset in words                                  |
 | `UIMM32`  | Immediate (unsigned 32-bit)    | 32-bit immediate operand                                     |
@@ -80,10 +81,12 @@ With the `@pcrel` modifier (or for `PCREL16`, see below), the relocation uses (g
 - `R_MICRON_LOPC16` (`LO <sym>@pcrel`)
 - `R_MICRON_HIPC16` (`HI <sym>@pcrel`)
 
+SIMM17 stores only the lower 16 bits of the immediate to the field. The 17th bit is occupied by the sign, which is stored otherwise.
+
 ### Offsets
 
-The `PCREL16` and `OFF15` values are special cases of immediates.
-PCREL16 is identical to a `SIMM16` relocation, except that it defaults to resolving the specified symbol using a pc-relative relocation.
+The `PCREL17` and `OFF15` values are special cases of immediates.
+PCREL17 is identical to a `SIMM17` relocation, except that it defaults to resolving the specified symbol using a pc-relative relocation.
 
 `OFF15` is a 15-bit immediate that resolves a 17-bit pc-relative relocation or a 17-bit signed integer offset, and discards the lower two bits to encode the instruction. It has two constraints, in addition to the constraints that would apply to a 22-bit signed immediate:
 
@@ -205,12 +208,12 @@ Each Chart has the following information:
 
 | Mnemonic | Operands                | Opcode | Special Payload Encoding | Canonical |
 | -------- | ----------------------- | ------ | ------------------------ | --------- |
-| `LDI`    | `GPR <d>, SIMM16 <i>`   | `0x05` | `x=1`                    | Yes       |
-| `LDIU`   | `GPR <d>, UIMM16 <i>`   | `0x05` | `x=0`                    | Yes       |
-| `LRA`    | `GPR <d>, PCREL16 <i>`  | `0x06` | `x=1`                    | Yes       |
+| `LDI`    | `GPR <d>, SIMM17 <x:i>` | `0x05` |                          | Yes       |
+| `LDIU`   | `GPR <d>, UIMM17 <i>`   | `0x05` | `x=0`                    | Yes       |
+| `LRA`    | `GPR <d>, PCREL17 <x:i>`| `0x06` |                          | Yes       |
 | `LRAU`   | `GPR <d>, UPCREL16 <i>` | `0x06` | `x=0`                    | Yes       |
-| `ADDI`   | `GPR <d>, SIMM16 <i>`   | `0x08` | `x=1,f=1,h=0`            | Yes       |
-| `ADDIF`  | `GPR <d>, SIMM16 <i>`   | `0x08` | `x=1,f=0,h=0`            | Yes       |
+| `ADDI`   | `GPR <d>, SIMM17 <x:i>` | `0x08` | `f=1,h=0`                | Yes       |
+| `ADDIF`  | `GPR <d>, SIMM17 <x:i>` | `0x08` | `f=0,h=0`                | Yes       |
 | `ADDIU`  | `GPR <d>, UIMM16 <i>`   | `0x08` | `x=0,f=1,h=0`            | Yes       |
 | `ADDIH`  | `GPR <d>, UIMM16 <i>`   | `0x08` | `x=0,f=1,h=1`            | Yes       |
 | `ADDIH`  | `GPR <d>, SIMM16 <i>`   | `0x08` | `x=0,f=1,h=1`            | No        |
