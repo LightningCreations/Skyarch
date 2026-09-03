@@ -1156,7 +1156,7 @@ skyarch[instr.rand]
 | Mnemonic | Opcode     | Payload                    |
 | -------- | ---------- | -------------------------- |
 |          | `7------0` | `31---------------------8` |
-| `RBGEN`  | `00011111` | `wwwww000000000eeeeeddddd` |
+| `RBGEN`  | `00011111` | `wwwww000100000eeeeeddddd` |
 
 skyarch[instr.rand.payload]
 
@@ -1358,9 +1358,9 @@ skyarch[instr.interlocked]
 | -------- | ---------- | -------------------------- |
 |          | `7------0` | `31---------------------8` |
 | `FENCE`  | `01001000` | `rr0000000000000000000000` |
-| `STIC`   | `01001011` | `rr0000000000wwsssssddddd` |
+| `STIC`   | `01001011` | `rr0000001000wwsssssddddd` |
 | `LDIL`   | `01001100` | `rr0000000000wwsssssddddd` |
-| `STICW`  | `01001101` | `rr0000000bbbbbsssssddddd` |
+| `STICW`  | `01001101` | `rr0000001bbbbbsssssddddd` |
 | `LDILW`  | `01001110` | `rr0000000bbbbbsssssddddd` |
 
 skyarch[instr.interlocked.payload]
@@ -1382,7 +1382,7 @@ skyarch[instr.interlocked.exceptions]
 
 skyarch[instr.interlocked.flags]
 
-- `STIC` and `STICW` set `z` if the validation check fails. In this case, no memory write or synchronization occurs.
+- `STIC` and `STICW` set `z` if the validation check fails. In this case, no memory write or synchronization occurs. All other flags are set to undefined values.
 
 skyarch[instr.interlocked.behaviour]
 
