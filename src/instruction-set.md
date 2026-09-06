@@ -374,7 +374,7 @@ On Reset (either hardware initiated, or initiated by an exception raised in an a
 - `r0` is `0`.
 
 skyarch[register.undefined]
-All other registers, including `flags`, have undefined values. An undefined value means that any independent read from the register may return an unpredictable result. Undefined values are cleared when the register is written to
+All other registers, including `flags`, have undefined values. An undefined value means that any independent read from the register may return an unpredictable result. Undefined values are cleared when the register is written to, even if the register is assigned to itself.
 
 ## Instructions
 
@@ -390,9 +390,9 @@ skarch[instr.und]
 
 (The Payload bits are ignored by both instructions)
 
-skarch[instr.und.except]
+skarch[instr.und.exception]
 
-- `EX[2]` (decode): Unconditionally
+- `EX[2]`: Unconditionally
 
 skyarch[instr.und.behaviour]
 Unconditionally raises Invalid Instruction errors
@@ -415,6 +415,10 @@ skyarch[instr.pause]
 skyarch[instr.pause.payload]
 
 - `k`: Total pause time
+
+skyarch[instr.pause.exceptions]
+
+- `Ex[2]`: If any reserved (fixed) bit is set to an invalid value.
 
 skyarch[instr.pause.behaviour]
 Delays execution for `k` clock cycles, 0-63,
@@ -446,6 +450,13 @@ skyarch[instr.mov.payload]
 - `c`: Condition Code (See Jump)
 - `d`: Destination Register
 
+skyarch[instr.mov.exceptions]
+
+- `Ex[2]`: If any reserved (fixed) bit is set to an invalid value
+- `Ex[2]`: If an undefined register map is referenced by the instruction
+- `Ex[2]`: If an undefined register in a map other than map 0 is referenced by the instruction
+- `Ex[2]`: If a read-only register in a map other than map 0 is referenced by the instruction
+- `Ex[5]`: If an invalid value is written to a register outside of map 0
 
 skyarch[instr.mov.behaviour]
 Copies data between general purpose registers and to/from general purpose registers into other registers.
@@ -499,12 +510,23 @@ skyarch[instr.ldst.payload]
 - `o`: Offset
 - `d`: Destination Register
 
+skyarch[instr.ldst.exceptions]
+
+- `Ex[2]`: If any reserved (fixed) bit is set to an invalid value
+- `ST`: `Ex[2]`: If `d` is `0`.
+- `LD`: `Ex[2]`: If `s` is `0`.
+- `ST`, `LD`: `Ex[2]`: If `w=3`.
+- `ST`: `Ex[2]`: If `r = 1`
+- `LD`: `Ex[2]`: If `r = 2`
+- `ST`: `Ex[1]`: If `d` is not aligned to `2 ^ w` bytes
+- `LD`: `Ex[1]`: If `d` is not aligned to `2 ^ w` bytes.
+- `ST`, `LD`: `Ex[1]`: If accessing memory causes a bus error
 
 skyarch[instr.ldst.behaviour]
 
 - `ST`: Stores `1 << w` bytes from `d` to `[s]`
 - `LD`: Loads `1 << w` bytes from `[s]` into `d`
-- `LDI`: Loads an immediate `i` (sign or zero exteneded) into the first (h=0) 16 bits of `d`
+- `LDI`: Loads an immediate `i` (sign or zero extened) into the first (h=0) 16 bits of `d`
 - `LRA`: Loads the address `IP + o` (`o` is a signed immediate if `x` is true, and an unsigned immediate otherwise) into `d`. `IP` is taken from the beginning of the next instruction
 
 skyarch[instr.ldst.well-ordered]
@@ -603,6 +625,10 @@ skyarch[instr.add-imm.payload]
 - `x`: Set sign bits (upper bits)
 - `d`: Destination Register
 
+skyarch[instr.add-imm.payload]
+
+- `Ex[2]`: If `h` and `x` are both set.
+
 skyarch[instr.add-imm.flags]
 Sets `P`, `N`, and `Z` according to the result. Sets `V` and `C` according to the computation (signed overflow and carry)
 
@@ -657,6 +683,10 @@ skyarch[instr.alu.payload]
 - `b`: Source Register 2
 - `a`: Source Register 1
 - `d`: Destination Register
+
+skyarch[instr.alu.exceptions]
+
+- `Ex[2]`: If any reserved (fixed) bit is set to an invalid value.
 
 skyarch[instr.alu.flags]
 
@@ -755,8 +785,13 @@ skyarch[instr.shift.payload]
 - `v`: Input Value
 - `d`: Destination Register
 
+skyarch[instr.alu.exceptions]
+
+- `Ex[2]`: If any reserved (fixed) bit is set to an invalid value.
+
 skyarch[instr.shift.flags]
 Sets `P`, `Z`, and `N` according to the result. Sets `C` if any 1 bit was shifted out of `v`. Sets `V` if `q` is greater than 32 (regardless of `w`)
+
 
 skyarch[instr.shift.behaviour]
 Shifts `v` by `q` and places the value in `d`, filling the shifted in bits with bits taken from the corresponding high bits of `r`. `q` wraps at 32 if `w` is set. If `w` is clear, excess shift quanities shift `r` in fully first.
@@ -849,6 +884,14 @@ skyarch[instr.branch.payload]
 - `l`: Link Register
 - `p`: Target Interrupt Priority
 
+skyarch[instr.branch.exceptions]
+
+- `Ex[2]`: If any reserved (fixed) bit is set to an invalid value
+- `IRET`: `Ex[2]`: if `p = 0`
+- `JMPR`: `Ex[2]`: If `r = 0`
+- `JMPR`: `Ex[3]`: If the destination address is not 4 byte aligned (even if the branch is not taken)
+- `Ex[1]`: If fetching the next instruction at the destination causes a bus error, if the branch is taken
+
 skyarch[instr.branch.behaviour]
 Jumps to the destination, if the condition is satisfied, saving the return address in `l` if taken:
 
@@ -864,9 +907,15 @@ instruction JMP(c: ConditionCode, l: u5, o: u15):
     if CheckCondition(flags, c):
         if l != 0:
             WriteRegister(0,l, curr_ip);
-        IP = curr_ip + disp;
+        let dest_ip = curr_ip + disp;
+        if not CheckBranchTarget(dest_ip):
+            Raise(Ex[1])
+        IP = dest_ip;
+
 
 instruction JMPR(c: ConditionCode, l: u5, r: u5):
+    if r == 0:
+        Raise(Ex[2]);
     let addr = ReadRegister(0,r);
     if addr & 3 != 0:
         Raise(EX[3]);
@@ -874,6 +923,8 @@ instruction JMPR(c: ConditionCode, l: u5, r: u5):
     if CheckCondition(flags, c):
         if l != 0:
             WriteRegister(0,l, curr_ip);
+        if not CheckBranchTarget(addr):
+            Raise(Ex[1])
         IP = addr;
 
 instruction IRET(p: u2):
@@ -882,6 +933,8 @@ instruction IRET(p: u2):
     let reg = p as u5;
     let val = ReadRegister(1, reg);
     let addr = val & !3;
+    if not CheckBranchTarget(dest_ip):
+        Raise(Ex[1])
     IP = addr;
     IL.valid = false;
     WriteRegister(1, 0, val & 3);
@@ -967,6 +1020,10 @@ skyarch[instr.io.payload]
 - d: Destination Transfer Register
 - s: Source Transfer Register
 
+skyarch[instr.io.exceptions]
+
+- `Ex[2]`: If any reserved (fixed bit) is set to an invalid value
+
 skyarch[instr.io.behaviour]
 
 Shift `w` (in `1..=32`, mod 32) bits in an io transfer register in or out to an I/O Port. w=0 = 32
@@ -1016,6 +1073,10 @@ skyarch[instr.flags.payload]
 - f: Flag modification mask
 - d: Destination Register
 - s: Source Register
+
+skarcyh[instr.flags.exceptions]
+
+- `Ex[2]`: If any reserved (fixed) bit is set to an invalid value.
 
 skyarch[instr.flags.behaviour]
 
@@ -1070,6 +1131,10 @@ skyarch[instr.xchg.payload]
 - `c`: Condition Code (See Jump)
 - `a`: Register 1
 
+skyarch[instr.xchg.exceptions]
+
+- `Ex[2]`: If any reserved (fixed) bit is set to an invalid value.
+
 skyarch[instr.xchg.behaviour]
 Exchanges GPR values `a` and `b`, if the condition check succeeds.
 
@@ -1099,6 +1164,11 @@ skyarch[instr.ext.payload]
 - `s`: Source
 - `d`: Destination
 
+skyarch[instr.ext.exceptions]
+
+- `Ex[2]`: If any reserved (fixed) bit is set to an invalid value
+- `Ex[2]`: If `w = 0`.
+
 skyarch[instr.ext.behaviour]
 Masks only the lower `w` bits of a register, and extends it according to `x`
 
@@ -1110,6 +1180,8 @@ enum ExtKind:
     Zero = 1
 
 instruction EXT(dest: u5, src: u5, x: ExtKind, w: u5):
+    if w==0:
+        Raise(Ex[2])
     let val = ReadRegister(0, src) & (1 << w)-1;
     let res: u32;
     switch(x):
@@ -1133,6 +1205,10 @@ skyarch[instr.bswap.payload]
 
 - `s`: Source operand
 - `d`: Destination Operand
+
+skyarch[instr.ext.bswap]
+
+- `Ex[2]`: If any reserved (fixed) bit is set to an invalid value
 
 skyarch[instr.bswap.behaviour]
 Swaps the order of bytes from the source value.
@@ -1163,6 +1239,10 @@ skyarch[instr.rand.payload]
 - `w`: Poll width
 - `e`: Status Destination
 - `d`: Destination
+
+skyarch[instr.rand.exceptions]
+
+- `Ex[2]`: If any reserved (fixed) bit is set to an invalid value
 
 skyarch[instr.rand.behaviour]
 Polls a hardware random bit generator. If successful, writes `w` (in `1..=32`, mod 32) random bits to `d` and clears `flags.z`. If unsuccesful, writes `0` to `d` and sets `flags.z`. In all cases, the current status of the RBG is stored to `e`. (TODO: Write out status format). Note that `flags.z` is only set depending on success/failure. In particular, a successful poll that results in all `0s` (Approximately a 2^-(w+1) chance) will still clear `flags.z`.
@@ -1231,6 +1311,10 @@ skyarch[instr.coprocessor.payload]
 
 - `p`: Co-processor instruction payload
 - `f`: Co-processor function
+
+skyarch[instr.ext.exceptions]
+
+- CPIx, CPIxEF, `Ex[8+x]`: If executing the instruction raises a coprocessor error
 
 skyarch[instr.coprocessor.behaviour]
 Executes the specified Coprocessor function with the specified payload
@@ -1332,6 +1416,10 @@ skyarch[instr.halt.behaviour]
 Places the CPU in a low-power state and stops executing.
 The CPU responds to interrupts as though `ictl.m` was set temporarily to `m`. The CPU resumes execution after receiving an interrupt that is valid at priority `m` (if `m=0` then the CPU will never resume execution).
 
+skyarch[instr.halt.exceptions]
+
+- `Ex[2]`: If any reserved (fixed) bit is set to an invalid value
+
 skyarch[instr.halt.serialize]
 The `HALT` instruction will not begin executing until instructions that occur before it have been fully written back, and no instructions that occur after it will begin executing until the `HALT` instruction is fully written back.
 
@@ -1373,12 +1461,16 @@ skyarch[instr.interlocked.payload]
 
 skyarch[instr.interlocked.exceptions]
 
-- `EX[1]`: If `d` is unaligned
+- `STIL`, `STILW`: `EX[1]`: If `d` is unaligned
+- `LDIL`, `LDILW`: `EX[1]`: If `s` is unaligned
+- `STIL`, `STILW`: `EX[2]`: If `d = 0`
+- `LDIL`, `LDILW`: `EX[2]`: If `s = 0`
 - `EX[1]`: If a bus fault occurs
 - `EX[2]`: If `w = 3`
 - `FENCE`: `EX[2]`: if `r = 0`
 - `LDIL`, `LDILW`: `EX[2]`: if `r = 2`
 - `STIC`, `STICW`: `EX[2]`: if `r = 1`
+
 
 skyarch[instr.interlocked.flags]
 
@@ -1422,6 +1514,9 @@ An `STICW` instruction fails (sets `z = 1` and does not modify any memory) if:
 - `IL.valid` is false
 - `IL.addr` refers to a different address than the `STICW` instruction
 - `IL.width` is not 3.
+
+skyarch[instr.interlocked.memory-write]
+An `STIC` or `STICW` instruction does not modify any memory if it fails. It is unspecified whether the write access check is performed.
 
 skyarch[instr.interlocked.acquire]
 On a multicore system, any instruction that synchronizes memory according to the `Acquire` or `SeqCst` order guarantees that the instruction will not write back its result until, for each value loaded by any of the following instructions, all memory accesses visible to the corresponding store instruction will be observed by any instruction that occurs after that instruction:
