@@ -874,7 +874,7 @@ skyarch[instr.branch]
 |          | `7------0` | `31---------------------8` |
 | `JMP`    | `00010000` | `ooooooooooooooocccclllll` |
 | `JMPR`   | `00010001` | `000000000rrrrr0cccclllll` |
-| `IRET`   | `00010010` | `0000000000000000000000pp` |
+| `IRET`   | `00010010` | `000000000000pp0000000000` |
 
 skyarch[instr.branch.payload]
 
