@@ -193,9 +193,10 @@ The first 32 interrupt entries are reserved for hardware exceptions, these inter
 - Entry `2`: Invalid Instruction - An instruction that is executed is an unknown opcode, reserved, malformed, or invalid
 - Entry `3`: Unaligned Branch Target - an indirect branch is unaligned.
 - Entry `4`: Consistency - An invalid system control structure was loaded from memory, or an invalid value was written to a system register.
+- Entry `5`: Debug Trap - Allows software-level debugging via the BREAKP instruction.
 - Entry `7`: PIRQ - May be raised in response to a priority signal external to the processor that requires immediate resolution. This is handled like an IRQ, but uses priority 2 instead of priority 3.
 - Entries `8`-`15`: Co-processor Unit `n` Error - The corresponding Coprocessor unit `n` signals an error after a `CPIn` instruction (`n` is Exception number - 4).
-- Entries `5`, `6`, and `16`-`31` are reserved.
+- Entries`6` and `16`-`31` are reserved.
 
 skyarch[register.interrupt.table.irqs]
 The remaining entries (32-63), may be allocated as IRQ vectors.
@@ -207,6 +208,26 @@ Interrupts are performed as follows:
 skyarch[register.interrupt.check]
 
 ```
+subrountine TryInterruptProcessor(iv: u8, pri: u2):
+    let intctl: u32 = ReadRegister(1, 0);
+    if (intctl & 3) < pri:
+        return;
+    let addr: u32 = ReadRegister(1, 31) + (iv << 3);
+    let retreg = IP | intctl & 3;
+    if pri > 0:
+        WriteRegister(1, pri, retreg);
+    let iaddr = ReadMemory(addr);
+    let rest = ReadMemory(addr + 4);
+    CheckAndRaise(EX[2]);
+    if (iaddr & 1) == 0:
+        return;
+    if rest != 0 or (iaddr & 2) != 0:
+        Raise(EX[4]);
+    let addr = iaddr & ~3;
+    IP = addr;
+    IL.valid = false;
+    return;
+
 subroutine InterruptProcessor(iv: u6, pri: u2):
     let intctl: u32 = ReadRegister(1, 0);
     if (intctl & 3) < pri:
@@ -1436,6 +1457,30 @@ instruction HALT(m: u2) {
         SetStatus(3);
         ShutdownCpu();
 }
+```
+
+### Debugging Hint
+
+skyarch[instr.dbg]
+
+| Mnemonic | Opcode     | Payload                    |
+| -------- | ---------- | -------------------------- |
+|          | `7------0` | `31---------------------8` |
+| `BREAKP` | `01000001` | `000000000000000000000000` |
+
+skyarch[instr.dbg.exceptions]
+
+- `Ex[2]` If any undefined bit is set.
+- `Ex[5]`: If a handler for `Ex[5]` is present and priority 1 exceptions are not masked by intctl.
+
+skyarch[instr.dbg.behaviour]
+Hints that a debugger attached to the machine should take control of execution at this point. If a handler for `Ex[5]` is present and priority 1 interrupts are not masked, raises that exception, with a return address pointing to the next instruction.
+
+```
+instruction BREAKP():
+    if CpuDebuggerPresent():
+        BreakToDebugger();
+    TryInterruptCpu(5, 1);
 ```
 
 ### Interlocked instructions
